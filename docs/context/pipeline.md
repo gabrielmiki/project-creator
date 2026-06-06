@@ -3,17 +3,24 @@
 ## Development Workflow
 
 ```
-1. Design → 2. Implement → 3. Review → 4. Test → 5. Commit
+1. Design → 2. Test-First Gate → 3. Implement → 4. Review → 5. Test → 6. Commit
 ```
 
 ### 1. Design (before coding)
 
 - Run the PRD Writer skill to clarify requirements
-- Run the TDD Reviewer agent on acceptance criteria
 - Run the Architecture Reviewer agent on implementation plan
 - Document decisions in `docs/context/` or `docs/adr/`
 
-### 2. Implement
+### 2. Test-First Gate (before implementation)
+
+- Run the TDD Reviewer agent on the ticket's acceptance criteria
+- Write unit tests in `tests/unit/` covering all ACs (happy path, error cases, edge cases)
+- Tests MUST NOT import from any Forge layer beyond the domain models used by the ticket
+- For cross-layer dependencies (plugins, infrastructure I/O, UI), use mocks or stubs
+- Confirm tests fail with: `uv run pytest tests/unit/<test_file>.py -v --no-header`
+
+### 3. Implement
 
 - Work in `src/forge/` following layer separation rules (UI → generation → plugins; infrastructure is only I/O)
 - Run `uv sync` after adding dependencies
@@ -21,15 +28,16 @@
 - Each plugin gets its own directory under `plugins/` and implements capability mixins (not a monolithic base class)
 - Domain models never import from other Forge layers; use string IDs for cross-layer references
 - Run `python -m forge --headless spec.json output/` for CLI/headless generation testing
+- Run tests iteratively until all pass: `uv run pytest tests/unit/<test_file>.py -v --no-header`
 
-### 3. Review
+### 4. Review
 
 - Run `git diff HEAD~1` to see changes
 - Invoke the Pre-Commit Checker agent for lint/type/test results
 - Invoke the Code Reviewer agent for C.L.E.A.R. analysis
 - Invoke the Security Diagnosis agent for new dependencies
 
-### 4. Test
+### 5. Test
 
 ```sh
 uv run pytest tests/ --cov=src/forge
@@ -39,7 +47,7 @@ uv run pytest tests/ --cov=src/forge
 - Integration tests in `tests/integration/` — test plugins generate correct output
 - Fixtures in `tests/fixtures/`
 
-### 5. Commit
+### 6. Commit
 
 - Run quality gate: `ruff check . && mypy src/ && pytest tests/`
 - Write descriptive commit message
@@ -66,11 +74,11 @@ uv run pytest tests/ --cov=src/forge
 ## Agent Invocation Order
 
 ```
-Architecture Reviewer → Before implementation (validate layer separation, dependency direction)
-TDD Reviewer          → Before implementation (validate acceptance criteria)
-Security Diagnosis    → After new dependencies added
-Pre-Commit Checker    → Before commit (lint, types, tests)
-Code Reviewer         → Before commit (C.L.E.A.R. framework)
+Architecture Reviewer → Step 1 (Design)        — validate layer separation, dependency direction
+TDD Reviewer          → Step 2 (Test-First Gate) — validate acceptance criteria testability
+Security Diagnosis    → Step 4 (Review)          — after new dependencies added
+Pre-Commit Checker    → Step 4 (Review)          — before commit (lint, types, tests)
+Code Reviewer         → Step 4 (Review)          — before commit (C.L.E.A.R. framework)
 ```
 
 Run Architecture Reviewer first for any cross-cutting changes or new plugin additions to verify: layer separation (UI → generation → plugins), domain purity (no circular deps), infrastructure encapsulation (I/O in infrastructure only), and plugin capability composition (correct mixin selection).

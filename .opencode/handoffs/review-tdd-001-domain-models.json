@@ -1,0 +1,103 @@
+{
+  "ac_validation": [
+    {
+      "criterion": "AC-001",
+      "text": "Given no other Forge modules exist, when the domain package is imported, then all dataclasses and enums are available with zero import errors.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-002",
+      "text": "Given a ProjectSpec with config={\"fastapi\": {\"orm\": \"sqlalchemy\"}}, when plugin_config(\"fastapi\") is called, then it returns {\"orm\": \"sqlalchemy\"}.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-003",
+      "text": "Given a ProjectSpec with config={\"fastapi\": {\"orm\": \"sqlalchemy\"}}, when plugin_config(\"django\") is called, then it raises KeyError.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-004",
+      "text": "Domain slug generation — 5 sub-cases: (1) \"User Management\" → \"user-management\"; (2) \"  API V2  \" → \"api-v2\"; (3) \"a  b\" → \"a-b\"; (4) explicit override slug=\"custom\" respected; (5) empty name → empty slug.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-005",
+      "text": "Given a Question with question_type=QuestionType.CHOICE, key=\"orm\", label=\"ORM\", and options=[\"a\",\"b\"], when serialized via dataclasses.asdict(), then all fields round-trip correctly through Question(**asdict(q)).",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-006",
+      "text": "Given a TemplateDefinition with id=\"fastapi-react\", display_name=\"FastAPI + React\", description=\"Full-stack template\", backend_id=\"fastapi\", when constructed, then all fields match and frontend_id defaults to None.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-007",
+      "text": "Given the domain module, when searched for imports from plugins, ui, generation, or infrastructure, then none exist.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-008",
+      "text": "Given a GeneratedFile with path=Path(\"src/main.py\"), content=\"print('hello')\", executable=True, when constructed, then all fields match.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-009",
+      "text": "Given a DurationEstimate with estimated_seconds=30, has_slow_steps=True, slow_step_details=[\"npm install\"], when constructed, then all fields match.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    }
+  ],
+  "infrastructure_readiness": [
+    {
+      "requirement": "pytest test runner",
+      "status": "EXISTS",
+      "location": "uv run pytest tests/",
+      "notes": "pytest configured via pyproject.toml (project depends on it via uv)"
+    },
+    {
+      "requirement": "test file location",
+      "status": "MISSING",
+      "location": "tests/unit/test_domain_models.py (to be created)",
+      "notes": "No test files exist yet — expected as this is the first ticket in the project. Tests are unit-only with no QApplication or plugin imports as required by pipeline.md."
+    },
+    {
+      "requirement": "fixtures for domain models",
+      "status": "MISSING",
+      "location": "tests/fixtures/",
+      "notes": "Not needed — domain models are pure dataclasses with no external dependencies. Test setup is trivial (construct dataclasses inline). Only .gitkeep exists currently."
+    },
+    {
+      "requirement": "mock/GPU infrastructure",
+      "status": "EXISTS",
+      "location": "N/A",
+      "notes": "No mocks or GPU handling needed — domain models are pure Python with stdlib-only imports."
+    }
+  ],
+  "coverage_analysis": {
+    "happy_path": "COVERED",
+    "error_cases": "COVERED",
+    "edge_cases": "COVERED"
+  },
+  "verdict": "NEEDS_REVISION",
+  "blocking_issues": [
+    "CRITICAL: Question dataclass field ordering violates Python dataclass rules — `question_type: QuestionType` (no default) follows `description: str = \"\"` (has default), which will raise TypeError at class definition time. Fix: move `question_type` before `description` so all required fields precede all optional fields.",
+    "Same field ordering bug exists in both docs/context/tickets/001-domain-models.md (line 79 before line 78) AND docs/context/architecture.md (line 154 after line 153). Both must be corrected together."
+  ]
+}

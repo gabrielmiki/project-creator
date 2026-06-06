@@ -57,7 +57,7 @@ tests/
 | Add dependency | `uv add <package>` |
 | Lint check | `uv run ruff check src/` |
 | Format | `uv run ruff format src/` |
-| Type check | `uv run mypy src/` |
+| Type check | `uv run mypy -p forge` |
 | Run tests | `uv run pytest tests/` |
 | Test w/ coverage | `uv run pytest tests/ --cov=src/forge` |
 

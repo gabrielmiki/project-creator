@@ -30,8 +30,8 @@ Plugin Layer
             │
 Domain Layer (pure leaf models, zero imports from other layers)
     ├── ProjectSpec, TemplateDefinition, Domain
-    ├── Question, QuestionType, GeneratedFile
-    └── ValidatedConfig
+    ├── Question, QuestionType, GeneratedFile, DurationEstimate
+    └── ValidatedConfig (deferred to T-005)
             │
 Infrastructure Layer (all I/O encapsulated here)
     ├── FileOperations (atomic writes, staging directory)
@@ -131,24 +131,33 @@ The orchestrator checks capabilities at runtime via `isinstance()`.
 All models live in `src/forge/domain/` with zero imports from other Forge layers.
 
 ```python
+import re
+
 @dataclass
-class Question:
-    key: str
-    label: str
-    description: str = ""
-    type: QuestionType = QuestionType.STRING
-    required: bool = True
-    default: Any = None
-    options: list[str] | None = None
-    placeholder: str | None = None
-    validation: Callable[[Any], bool | str] | None = None
+class ValidationRule:
+    min: int | None = None
+    max: int | None = None
+    pattern: str | None = None
 
 class QuestionType(Enum):
     STRING = "string"
     BOOLEAN = "boolean"
-    SELECT = "select"
+    CHOICE = "choice"
     MULTI_SELECT = "multi_select"
     INTEGER = "integer"
+
+@dataclass
+class Question:
+    key: str
+    label: str
+    question_type: QuestionType
+    required: bool = True
+    default: Any = None
+    description: str = ""
+    options: list[str] | None = None
+    placeholder: str | None = None
+    validation: ValidationRule | None = None
+    group: str | None = None
 
 @dataclass
 class ProjectSpec:
@@ -159,26 +168,38 @@ class ProjectSpec:
 
     def plugin_config(self, plugin_id: str) -> dict[str, Any]:
         """Namespaced accessor. Raises KeyError if plugin has no config."""
+        if plugin_id not in self.config:
+            raise KeyError(f"Plugin '{plugin_id}' has no configuration")
         return self.config[plugin_id]
 
 @dataclass
 class TemplateDefinition:
     id: str
     display_name: str
-    backend_id: str                       # string ID, resolved via PluginRegistry
-    frontend_id: str | None               # string ID, resolved via PluginRegistry
     description: str
+    backend_id: str                       # string ID, resolved via PluginRegistry
+    frontend_id: str | None = None        # string ID, resolved via PluginRegistry
 
 @dataclass
 class Domain:
     name: str
-    slug: str                             # auto-derived, URL-safe
+    slug: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.slug:
+            self.slug = re.sub(r"\s+", "-", self.name.strip().lower())
 
 @dataclass
 class GeneratedFile:
-    path: str                             # relative path in generated project
+    path: Path                            # relative path in generated project
     content: str                          # rendered content
     executable: bool = False              # chmod +x
+
+@dataclass
+class DurationEstimate:
+    estimated_seconds: int
+    has_slow_steps: bool
+    slow_step_details: list[str]
 ```
 
 ## Generation Pipeline (decomposed orchestrator)
