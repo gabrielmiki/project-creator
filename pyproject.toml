@@ -44,8 +44,12 @@ testpaths = ["tests"]
 
 [dependency-groups]
 dev = [
+    "blockdiag>=3.0.0",
+    "diagrams>=0.25.1",
     "mypy>=2.1.0",
     "pytest>=9.0.3",
     "pytest-cov>=7.1.0",
     "ruff>=0.15.16",
+    "pyyaml>=6.0.2",
+    "setuptools>=69,<70",
 ]

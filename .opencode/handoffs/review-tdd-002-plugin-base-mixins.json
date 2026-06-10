@@ -1,0 +1,79 @@
+{
+  "ac_validation": [
+    {
+      "criterion": "AC-001",
+      "text": "Given the mixins are defined, when a plugin class inherits from PluginBase and FileProvider, then it must implement only name, display_name, description, files(), and directories() — no forced empty methods.",
+      "testable": true,
+      "issues": [
+        "The phrase 'no forced empty methods' is a design description (ISP compliance), not a test assertion. The testable interpretation is: 'a PluginBase + FileProvider subclass can be instantiated without implementing methods from CommandRunner, DependencyProvider, or Configurable.' This is testable via isinstance checks and successful instantiation.",
+        "The AC does not explicitly verify that requires and run_after (inherited from PluginBase) are accessible with their default values. This would be a useful additional assertion to confirm the full interface surface."
+      ],
+      "suggested_fix": "Reword to: 'Given PluginBase and FileProvider are defined, when a class inherits from both, then it must instantiate successfully by implementing only name, display_name, description, files(), and directories(), and isinstance checks for uninherited mixins (CommandRunner, Configurable, DependencyProvider) must return False.'"
+    },
+    {
+      "criterion": "AC-002",
+      "text": "Given a plugin that does NOT inherit CommandRunner, when isinstance(plugin, CommandRunner) is checked, then it returns False.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-003",
+      "text": "Given PluginBase is abstract, when instantiated directly, then TypeError is raised.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-004",
+      "text": "Given the module, when searched for imports from ui, generation, or infrastructure, then none exist (may import from domain only).",
+      "testable": true,
+      "issues": [
+        "The AC must scan BOTH files: src/forge/plugins/base.py and src/forge/plugins/__init__.py. The AST scanner from TestAC7_NoCrossLayerImports must be parameterized to point at the plugins/ directory.",
+        "The AC phrasing 'may import from domain only' is slightly too restrictive — stdlib imports (abc, pathlib, typing) are also needed. The intent is clearly that within forge-internal imports, only domain is allowed. The test should permit stdlib imports while forbidding forge.ui, forge.generation, forge.infrastructure.",
+        "The API spec code block shows from abc import ABC, abstractmethod but does NOT show imports for Question, ProjectSpec, GeneratedFile, Path — these types appear in method signatures and must be imported from forge.domain or stdlib. This is a doc completeness issue, not a testability blocker."
+      ],
+      "suggested_fix": "Clarify AC text: '...when searched for imports from forge.ui, forge.generation, or forge.infrastructure, then none exist. Imports from forge.domain and stdlib are permitted.'"
+    }
+  ],
+  "infrastructure_readiness": [
+    {
+      "requirement": "test file (tests/unit/test_plugin_base.py)",
+      "status": "MISSING",
+      "location": "tests/unit/test_plugin_base.py",
+      "notes": "Must be created. Follow class-per-AC pattern from test_domain_models.py. AC-004 AST scanner requires parameterization to scan plugins/ directory instead of domain/."
+    },
+    {
+      "requirement": "conftest.py with mock plugin fixtures",
+      "status": "EXISTS",
+      "location": "tests/unit/conftest.py",
+      "notes": "EXISTS with 5 mock plugin classes (FileOnlyPlugin, ConfigOnlyPlugin, CommandOnlyPlugin, DependencyOnlyPlugin, FullPlugin) and corresponding fixtures. KNOWN ISSUE: module-level imports from forge.plugins.base will cause ModuleNotFoundError at collection time until base.py is implemented. This is explicitly non-blocking per instructions."
+    },
+    {
+      "requirement": "domain model imports (Question, ProjectSpec, GeneratedFile)",
+      "status": "EXISTS",
+      "location": "src/forge/domain/",
+      "notes": "All domain models needed by mixin signatures exist and are properly exported via domain/__init__.py. Question uses correct field name question_type: QuestionType. ProjectSpec, GeneratedFile, QuestionType all confirmed importable."
+    },
+    {
+      "requirement": "AST scanner pattern for architecture enforcement",
+      "status": "EXISTS",
+      "location": "tests/unit/test_domain_models.py (TestAC7_NoCrossLayerImports)",
+      "notes": "The ast.parse() pattern is well-established. For AC-004, the scanner must be parameterized to: (1) scan plugins/ instead of domain/, (2) allow forge.domain and stdlib imports, (3) forbid forge.ui, forge.generation, forge.infrastructure. The existing FORBIDDEN_PREFIXES tuple can be reused with 'forge.plugins' removed from the forbidden list."
+    },
+    {
+      "requirement": "from __future__ import annotations convention",
+      "status": "EXISTS",
+      "location": "All domain + test files",
+      "notes": "Convention is established in all existing source and test files. conftest.py already uses it. test_plugin_base.py should follow the same pattern."
+    }
+  ],
+  "coverage_analysis": {
+    "happy_path": "COVERED",
+    "error_cases": "COVERED",
+    "edge_cases": "COVERED",
+    "plugin_isolation_tested": "YES"
+  },
+  "verdict": "APPROVED",
+  "blocking_issues": []
+}

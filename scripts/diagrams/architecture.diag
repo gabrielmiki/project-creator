@@ -1,0 +1,45 @@
+blockdiag {
+  orientation = portrait;
+  span_width = 120;
+
+  // Layers
+  "UI Layer" [color = "#E3F2FD"];
+  "Generation Layer" [color = "#F3E5F5"];
+  "Plugin Layer" [color = "#FFF3E0"];
+  "Domain Layer" [color = "#E8F5E9"];
+  "Infrastructure Layer" [color = "#FFEBEE"];
+
+  // Generation internals
+  Orchestrator [color = "#F3E5F5"];
+  PluginRegistry [color = "#F3E5F5"];
+  ValidationEngine [color = "#F3E5F5"];
+  ProgressReporter [color = "#F3E5F5"];
+  Stages [color = "#F3E5F5", label = "Stages (6)"];
+
+  // Plugin internals
+  PluginBase [color = "#FFF3E0"];
+  "Capability Mixins" [color = "#FFF3E0"];
+
+  // Infrastructure internals
+  GenerationTransaction [color = "#FFEBEE"];
+
+  // Flow
+  "UI Layer" -> "Generation Layer" [label = "facade"];
+  "Generation Layer" -> "Plugin Layer" [label = "discovers"];
+
+  // Generation internals
+  Orchestrator -> PluginRegistry;
+  Orchestrator -> ValidationEngine;
+  Orchestrator -> ProgressReporter;
+  Orchestrator -> Stages;
+
+  // Domain leaf — imported by all
+  "Domain Layer" -> "UI Layer" [style = dashed];
+  "Domain Layer" -> "Generation Layer" [style = dashed];
+  "Domain Layer" -> "Plugin Layer" [style = dashed];
+
+  // Infrastructure I/O
+  "Generation Layer" -> "Infrastructure Layer" [label = "I/O"];
+  "Plugin Layer" -> "Infrastructure Layer";
+  "Infrastructure Layer" -> GenerationTransaction;
+}

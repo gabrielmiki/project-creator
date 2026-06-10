@@ -10,6 +10,8 @@
 
 - Run the PRD Writer skill to clarify requirements
 - Run the Architecture Reviewer agent on implementation plan
+- Run ticket viz to understand scope: `python scripts/ticket_viz.py T-XXX`
+- Run downstream impact analysis: `python scripts/ticket_viz.py T-XXX --downstream`
 - Document decisions in `docs/context/` or `docs/adr/`
 
 ### 2. Test-First Gate (before implementation)
@@ -19,6 +21,7 @@
 - Tests MUST NOT import from any Forge layer beyond the domain models used by the ticket
 - For cross-layer dependencies (plugins, infrastructure I/O, UI), use mocks or stubs
 - Confirm tests fail with: `uv run pytest tests/unit/<test_file>.py -v --no-header`
+- Visualize test scope: check which layers the ticket touches via `python scripts/ticket_viz.py T-XXX`
 
 ### 3. Implement
 
@@ -29,10 +32,13 @@
 - Domain models never import from other Forge layers; use string IDs for cross-layer references
 - Run `python -m forge --headless spec.json output/` for CLI/headless generation testing
 - Run tests iteratively until all pass: `uv run pytest tests/unit/<test_file>.py -v --no-header`
+- After structural changes, regenerate architecture diagrams: `python scripts/generate_diagrams.py`
+- If ticket map changed, verify with: `python scripts/ticket_viz.py` (list all)
 
 ### 4. Review
 
 - Run `git diff HEAD~1` to see changes
+- Regenerate diagrams if code structure changed: `python scripts/generate_diagrams.py`
 - Invoke the Pre-Commit Checker agent for lint/type/test results
 - Invoke the Code Reviewer agent for C.L.E.A.R. analysis
 - Invoke the Security Diagnosis agent for new dependencies

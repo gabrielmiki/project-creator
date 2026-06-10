@@ -1,0 +1,37 @@
+blockdiag {
+  orientation = landscape;
+  span_width = 160;
+  node_width = 140;
+
+  // Stages
+  Stage1 [color = "#E3F2FD", label = "Stage 1\nDirectory\nInitializer"];
+  Stage2 [color = "#E3F2FD", label = "Stage 2\nShared Structure\nScaffolder"];
+  Stage3 [color = "#E3F2FD", label = "Stage 3\nPlugin\nExecution Engine"];
+  Stage4 [color = "#E3F2FD", label = "Stage 4\nJustfile\nGenerator"];
+  Stage5 [color = "#E3F2FD", label = "Stage 5\nProject Doc\nWriter"];
+  Stage6 [color = "#E3F2FD", label = "Stage 6\nAgent Skill\nScaffolder"];
+
+  // Support
+  Orchestrator [color = "#F3E5F5"];
+  ProgressReporter [color = "#FFF3E0"];
+  Transaction [color = "#FFEBEE", label = "Generation\nTransaction"];
+
+  // Pipeline flow
+  Orchestrator -> Stage1;
+  Stage1 -> Stage2;
+  Stage2 -> Stage3;
+  Stage3 -> Stage4;
+  Stage4 -> Stage5;
+  Stage5 -> Stage6;
+  Stage6 -> "Generated\nProject" [color = "#4CAF50"];
+
+  // Cross-cutting
+  Orchestrator -> ProgressReporter [style = dashed, label = "emits"];
+
+  // Transaction staging
+  Stage2 -> Transaction [style = dotted];
+  Stage3 -> Transaction [style = dotted, label = "checkpoints"];
+  Stage4 -> Transaction [style = dotted];
+  Stage5 -> Transaction [style = dotted];
+  Stage6 -> Transaction [style = dotted];
+}
