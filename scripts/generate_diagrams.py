@@ -120,7 +120,7 @@ def generate_ticket_graph(out_format: str = "png") -> None:
         with open(ticket_map_path) as f:
             data = yaml.safe_load(f)
         tickets = data["tickets"]
-    except Exception as e:
+    except (FileNotFoundError, yaml.YAMLError, KeyError) as e:
         print(f"  Skipping ticket graph: {e}", file=sys.stderr)
         return
 
@@ -139,7 +139,7 @@ def generate_ticket_graph(out_format: str = "png") -> None:
         for tid in sorted(tickets):
             t = tickets[tid]
             label = f"{tid}\n{t['title']}"
-            nodes[tid] = Custom(label, "")
+            nodes[tid] = Custom(label)
 
         for tid, t in tickets.items():
             for dep in t.get("depends_on", []):

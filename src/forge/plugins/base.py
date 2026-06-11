@@ -18,6 +18,10 @@ class PluginBase(ABC):
     requires: list[str] = []
     run_after: list[str] = []
 
+    def __init__(self) -> None:
+        self.requires = list(self.__class__.requires or [])
+        self.run_after = list(self.__class__.run_after or [])
+
 
 class Configurable(ABC):
     @abstractmethod

@@ -15,6 +15,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -59,7 +60,8 @@ def load_ticket_map() -> dict[str, Any]:
 
 def load_ticket_markdown(ticket_id: str) -> str | None:
     for f in TICKETS_DIR.glob("*.md"):
-        if f.name.startswith(ticket_id.lower().replace("-", "")):
+        numeric_id = re.search(r"\d+", ticket_id)
+        if numeric_id and f.name.startswith(numeric_id.group()):
             with open(f) as fh:
                 lines = fh.readlines()
             header_lines = []
@@ -104,19 +106,14 @@ def show_all_tickets(tickets: dict[str, Any]) -> None:
     for phase in phases:
         print(f"\n{BOLD}{phase.upper()}{RESET}")
         print("-" * 60)
-        phase_tickets = {
-            tid: t for tid, t in tickets.items() if t["phase"] == phase
-        }
+        phase_tickets = {tid: t for tid, t in tickets.items() if t["phase"] == phase}
         for tid in sorted(phase_tickets):
             t = phase_tickets[tid]
             deps = t.get("depends_on", [])
             dep_str = ", ".join(deps) if deps else "\033[2m(none)\033[0m"
             down = downstream.get(tid, [])
             down_str = ", ".join(down) if down else ""
-            print(
-                f"  {BOLD}{tid}{RESET} {t['title']}"
-                f"  [{color_layer(t['layer'])}]"
-            )
+            print(f"  {BOLD}{tid}{RESET} {t['title']}  [{color_layer(t['layer'])}]")
             print(f"       deps: {dep_str}")
             if down_str:
                 print(f"       downstream: {down_str}")
@@ -188,8 +185,7 @@ def generate_png(tickets: dict[str, Any]) -> None:
         from diagrams.custom import Custom
     except ImportError:
         print(
-            "diagrams library not available. "
-            "Install with: uv add --dev diagrams",
+            "diagrams library not available. Install with: uv add --dev diagrams",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -209,7 +205,7 @@ def generate_png(tickets: dict[str, Any]) -> None:
         for tid in sorted(tickets):
             t = tickets[tid]
             label = f"{tid}\n{t['title']}"
-            nodes[tid] = Custom(label, "")
+            nodes[tid] = Custom(label)
 
         for tid, t in tickets.items():
             for dep in t.get("depends_on", []):
