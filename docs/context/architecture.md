@@ -70,9 +70,15 @@ Conflict resolution:
 
 ```python
 class PluginBase(ABC):
-    name: str
-    display_name: str
-    description: str
+    @property
+    @abstractmethod
+    def name(self) -> str: ...
+    @property
+    @abstractmethod
+    def display_name(self) -> str: ...
+    @property
+    @abstractmethod
+    def description(self) -> str: ...
     requires: list[str] = []       # plugin IDs that must run first
     run_after: list[str] = []      # soft ordering hints
 ```
@@ -82,31 +88,48 @@ PluginExecutionEngine resolves the graph topologically and detects cycles. Each 
 ## Plugin Interface (ISP-compliant mixins)
 
 ```python
-# forge/plugins/base.py
+from abc import ABC, abstractmethod
+
 
 class PluginBase(ABC):
     """Minimal base — every plugin must provide these."""
-    name: str
-    display_name: str
-    description: str
+
+    @property
+    @abstractmethod
+    def name(self) -> str: ...
+    @property
+    @abstractmethod
+    def display_name(self) -> str: ...
+    @property
+    @abstractmethod
+    def description(self) -> str: ...
     requires: list[str] = []
     run_after: list[str] = []
 
 class Configurable(ABC):
     """Plugin has user-configurable questions (wizard Step 3)."""
+
+    @abstractmethod
     def questions(self) -> list[Question]: ...
 
 class FileProvider(ABC):
     """Plugin declares files and directories it creates."""
+
+    @abstractmethod
     def files(self, spec: ProjectSpec) -> list[GeneratedFile]: ...
+    @abstractmethod
     def directories(self, spec: ProjectSpec) -> list[str]: ...
 
 class CommandRunner(ABC):
     """Plugin runs shell commands or scaffold tools during generation."""
+
+    @abstractmethod
     def generate(self, spec: ProjectSpec, target_dir: Path) -> None: ...
 
 class DependencyProvider(ABC):
     """Plugin requires Python packages."""
+
+    @abstractmethod
     def dependencies(self) -> list[str]: ...
 ```
 

@@ -60,6 +60,13 @@ tests/
 | Type check | `uv run mypy -p forge` |
 | Run tests | `uv run pytest tests/` |
 | Test w/ coverage | `uv run pytest tests/ --cov=src/forge` |
+| List all tickets | `python scripts/ticket_viz.py` |
+| Ticket details | `python scripts/ticket_viz.py T-005` |
+| Downstream impact | `python scripts/ticket_viz.py T-005 --downstream` |
+| PNG dependency graph | `python scripts/ticket_viz.py --png` |
+| Generate diagrams | `python scripts/generate_diagrams.py` |
+| Generate SVG diagrams | `python scripts/generate_diagrams.py --svg` |
+| Validate blockdiag | `uv run blockdiag -T png scripts/diagrams/architecture.diag` |
 
 ## Architecture Rules
 

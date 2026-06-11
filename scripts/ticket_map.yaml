@@ -1,0 +1,299 @@
+# Forge Ticket Map — machine-readable companion to dependency-analysis.md
+# Manually maintained. All ticket IDs, layers, dependencies, and file mappings.
+
+tickets:
+  T-001:
+    title: Domain Models
+    layer: domain
+    phase: 1 — MVP Foundation
+    complexity: simple
+    depends_on: []
+    files:
+      - src/forge/domain/__init__.py
+      - src/forge/domain/project_spec.py
+      - src/forge/domain/questions.py
+      - src/forge/domain/generated_file.py
+    domain_imports: []
+    risks:
+      - AC-7: Static import analysis requires ast.parse scanner
+      - AC-5: Nested dataclass serialization with ValidationRule
+
+  T-002:
+    title: PluginBase + Capability Mixins
+    layer: plugins
+    phase: 1 — MVP Foundation
+    complexity: simple
+    depends_on: [T-001]
+    files:
+      - src/forge/plugins/__init__.py
+      - src/forge/plugins/base.py
+    domain_imports:
+      - Question
+      - GeneratedFile
+      - ProjectSpec
+    risks: []
+
+  T-003:
+    title: ProgressReporter Protocol + Implementations
+    layer: generation
+    phase: 1 — MVP Foundation
+    complexity: simple
+    depends_on: []
+    files:
+      - src/forge/generation/progress.py
+    domain_imports:
+      - DurationEstimate
+    risks: []
+
+  T-004:
+    title: GenerationTransaction (Atomic Staging)
+    layer: infrastructure
+    phase: 1 — MVP Foundation
+    complexity: medium
+    depends_on: []
+    files:
+      - src/forge/infrastructure/__init__.py
+      - src/forge/infrastructure/transaction.py
+    domain_imports: []
+    risks:
+      - Atomic staging → commit/rollback
+      - Partial failure recovery with checkpoints
+
+  T-005:
+    title: PluginRegistry + ValidationEngine
+    layer: generation
+    phase: 1 — MVP Foundation
+    complexity: medium
+    depends_on: [T-001, T-002]
+    files:
+      - src/forge/generation/__init__.py
+      - src/forge/generation/registry.py
+      - src/forge/generation/validation.py
+    domain_imports:
+      - TemplateDefinition
+      - ProjectSpec
+      - Question
+      - ValidationRule
+    risks:
+      - Plugin dependency ordering → topological sort + cycle detection
+      - Discovery conflict resolution (entry_points vs .plugins/)
+      - Strict mode error handling
+
+  T-006:
+    title: Generation Stages (All 6)
+    layer: generation/stages
+    phase: 1 — MVP Foundation
+    complexity: complex
+    depends_on: [T-001, T-002, T-004]
+    files:
+      - src/forge/generation/stages/__init__.py
+      - src/forge/generation/stages/base.py
+      - src/forge/generation/stages/directory_initializer.py
+      - src/forge/generation/stages/shared_structure_scaffolder.py
+      - src/forge/generation/stages/plugin_execution_engine.py
+      - src/forge/generation/stages/justfile_generator.py
+      - src/forge/generation/stages/project_documentation_writer.py
+      - src/forge/generation/stages/agent_skill_scaffolder.py
+    domain_imports:
+      - ProjectSpec
+      - GeneratedFile
+      - DurationEstimate
+    risks:
+      - DirectoryNotEmptyError contract
+      - MissingDependencyError in plugin execution
+      - Skipping Stage 3 when no domains selected
+
+  T-007:
+    title: Orchestrator Facade + CLI Entry Point
+    layer: generation
+    phase: 1 — MVP Foundation
+    complexity: complex
+    depends_on: [T-003, T-005, T-006]
+    files:
+      - src/forge/generation/orchestrator.py
+      - src/forge/__main__.py
+      - src/forge/app.py
+    domain_imports:
+      - TemplateDefinition
+      - Question
+      - ProjectSpec
+      - DurationEstimate
+    risks:
+      - Rollback orchestration on stage failure
+      - Display detection for CLI vs GUI dispatch
+
+  T-008:
+    title: FastAPI Plugin (MVP Bundled Plugin)
+    layer: plugins/fastapi
+    phase: 1 — MVP Foundation
+    complexity: medium
+    depends_on: [T-002, T-001]
+    files:
+      - src/forge/plugins/fastapi/__init__.py
+      - src/forge/plugins/fastapi/plugin.py
+      - src/forge/plugins/fastapi/templates/
+    domain_imports:
+      - Question
+      - GeneratedFile
+      - ProjectSpec
+    risks:
+      - MVP validation plugin: end-to-end pipeline test
+
+  T-009:
+    title: Django Plugin
+    layer: plugins/django
+    phase: 2 — Remaining Bundled Plugins
+    complexity: medium
+    depends_on: [T-002, T-001]
+    files:
+      - src/forge/plugins/django/__init__.py
+      - src/forge/plugins/django/plugin.py
+      - src/forge/plugins/django/templates/
+    domain_imports:
+      - Question
+      - GeneratedFile
+      - ProjectSpec
+    risks: []
+
+  T-010:
+    title: React Plugin
+    layer: plugins/react
+    phase: 2 — Remaining Bundled Plugins
+    complexity: medium
+    depends_on: [T-002, T-001]
+    files:
+      - src/forge/plugins/react/__init__.py
+      - src/forge/plugins/react/plugin.py
+      - src/forge/plugins/react/templates/
+    domain_imports:
+      - Question
+      - GeneratedFile
+      - ProjectSpec
+    risks:
+      - Node.js scaffold via CommandRunner (non-Python subprocess)
+
+  T-011:
+    title: HTMX Plugin
+    layer: plugins/htmx
+    phase: 2 — Remaining Bundled Plugins
+    complexity: medium
+    depends_on: [T-002, T-001]
+    files:
+      - src/forge/plugins/htmx/__init__.py
+      - src/forge/plugins/htmx/plugin.py
+      - src/forge/plugins/htmx/templates/
+    domain_imports:
+      - Question
+      - GeneratedFile
+      - ProjectSpec
+    risks: []
+
+  T-012:
+    title: QApplication Bootstrap + MainWindow Shell
+    layer: ui
+    phase: 3 — GUI Layer
+    complexity: medium
+    depends_on: [T-001]
+    files:
+      - src/forge/ui/__init__.py
+      - src/forge/ui/app.py
+      - src/forge/ui/main_window.py
+      - src/forge/ui/screens/__init__.py
+    domain_imports:
+      - ProjectSpec
+    risks: []
+
+  T-013:
+    title: GenerationWorker (QThread) + QtProgressReporter
+    layer: ui
+    phase: 3 — GUI Layer
+    complexity: medium
+    depends_on: [T-003, T-007, T-012]
+    files:
+      - src/forge/ui/workers.py
+    domain_imports:
+      - DurationEstimate
+    risks:
+      - Bridge ProgressReporter protocol → PySide6 signals
+      - Thread safety (QThread + cancel)
+
+  T-014:
+    title: Wizard Screens 1-3 (Welcome, Domain Selection, Configuration)
+    layer: ui/screens
+    phase: 3 — GUI Layer
+    complexity: complex
+    depends_on: [T-001, T-005, T-007, T-012]
+    files:
+      - src/forge/ui/screens/welcome_screen.py
+      - src/forge/ui/screens/domain_selection_screen.py
+      - src/forge/ui/screens/configuration_screen.py
+      - src/forge/ui/screens/base.py
+    domain_imports:
+      - ProjectSpec
+      - TemplateDefinition
+      - Question
+    risks:
+      - Dynamic form rendering from Question objects
+      - Inline validation with can_proceed gating
+
+  T-015:
+    title: Wizard Screens 4-5 (Review Summary, Generation)
+    layer: ui/screens
+    phase: 3 — GUI Layer
+    complexity: medium
+    depends_on: [T-001, T-013, T-014]
+    files:
+      - src/forge/ui/screens/review_screen.py
+      - src/forge/ui/screens/generation_screen.py
+    domain_imports:
+      - ProjectSpec
+      - GeneratedFile
+      - DurationEstimate
+    risks:
+      - Duration estimate warning (>10s)
+      - Overwrite confirm flow
+
+  T-016:
+    title: Integration Tests — Foundation
+    layer: tests/integration
+    phase: 4 — Integration Tests
+    complexity: medium
+    depends_on: [T-001, T-002, T-003, T-004, T-005]
+    files:
+      - tests/integration/__init__.py
+      - tests/integration/conftest.py
+      - tests/integration/test_domain_models.py
+      - tests/integration/test_plugin_discovery.py
+      - tests/integration/test_transaction.py
+      - tests/integration/test_validation.py
+      - tests/integration/test_progress_reporter.py
+      - tests/integration/test_plugin_capabilities.py
+    domain_imports: []
+    risks: []
+
+  T-017:
+    title: Integration Tests — CLI/Pipeline
+    layer: tests/integration
+    phase: 4 — Integration Tests
+    complexity: medium
+    depends_on: [T-006, T-007, T-008]
+    files:
+      - tests/integration/test_cli_headless.py
+      - tests/integration/test_orchestrator_pipeline.py
+      - tests/integration/test_fastapi_plugin.py
+    domain_imports: []
+    risks: []
+
+  T-018:
+    title: Integration Tests — Full Pipeline
+    layer: tests/integration
+    phase: 4 — Integration Tests
+    complexity: medium
+    depends_on: [T-009, T-010, T-011, T-012, T-013, T-014, T-015]
+    files:
+      - tests/integration/test_all_plugins.py
+      - tests/integration/test_gui_worker.py
+      - tests/integration/test_overwrite_flow.py
+      - tests/integration/test_error_scenarios.py
+    domain_imports: []
+    risks: []
