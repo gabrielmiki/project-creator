@@ -21,7 +21,7 @@
 - Tests MUST NOT import from any Forge layer beyond the domain models used by the ticket
 - For cross-layer dependencies (plugins, infrastructure I/O, UI), use mocks or stubs
 - Confirm tests fail with: `uv run pytest tests/unit/<test_file>.py -v --no-header`
-- Visualize test scope: check which layers the ticket touches via `python scripts/ticket_viz.py T-XXX`
+- Visualize test scope: check the ticket's layer and dependencies via `python scripts/ticket_viz.py T-XXX`
 
 ### 3. Implement
 
