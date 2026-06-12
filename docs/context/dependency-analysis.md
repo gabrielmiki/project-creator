@@ -38,6 +38,17 @@ Legend: ──► direct dependency     ~ ~ ~ ► transitive dependency
             │       ├─► [plugins] T-010 React Plugin
             │       └─► [plugins] T-011 HTMX Plugin
             │
+            ├─► [generation] T-003 ProgressReporter Protocol
+            │     (imports: DurationEstimate)
+            │     (test-enforced: requires infrastructure/__init__.py)
+            │       │
+            │       ├─► [generation] T-006 Generation Stages
+            │       │     (injects ProgressReporter into each stage)
+            │       ├─► [generation] T-007 Orchestrator Facade + CLI
+            │       │     (creates StdoutProgressReporter for CLI mode)
+            │       └─► [ui] T-013 GenerationWorker
+            │             (QtProgressReporter implements the protocol)
+            │
             ├─► [generation] T-005 PluginRegistry + ValidationEngine
             │     (imports: TemplateDefinition, ProjectSpec, Question, ValidationRule)
             │       │
@@ -53,7 +64,7 @@ Legend: ──► direct dependency     ~ ~ ~ ► transitive dependency
             │                     (uses: ProjectSpec, GeneratedFile, DurationEstimate)
             │
             ├─► [generation] T-006 Generation Stages (all 6)
-            │     (imports: ProjectSpec, GeneratedFile, DurationEstimate)
+            │     (imports: ProjectSpec, GeneratedFile, DurationEstimate, ProgressReporter)
             │       │
             │       └─► [generation] T-007 Orchestrator (via stages)
             │
@@ -61,9 +72,12 @@ Legend: ──► direct dependency     ~ ~ ~ ► transitive dependency
             ├─► [tests] T-017 Integration Tests — CLI/Pipeline
             └─► [tests] T-018 Integration Tests — Full Pipeline
 
-Independent tickets (no domain imports):
-    T-003 ProgressReporter Protocol (generation/)
-    T-004 GenerationTransaction (infrastructure/)
+Architecture dependency notes:
+    T-003 ProgressReporter Protocol — conceptually independent (no domain imports)
+        but test AC-8 (`test_progress.py:141-152`) enforces that every generation/
+        file imports from `forge.infrastructure`, creating a practical ordering
+        requirement on infrastructure/__init__.py being present.
+    T-004 GenerationTransaction — fully independent, no imports from any layer
 ```
 
 ### Detailed Chain: T-002 PluginBase + Mixins
@@ -85,6 +99,25 @@ T-001 (domain) ──► T-002 (plugins/base.py)
 ```
 
 **Key chain insight:** T-002 is the narrowest bottleneck in the entire dependency graph — every downstream ticket (generation, UI, tests) either directly or transitively depends on the PluginBase + mixin interface. A breaking change to `PluginBase` or any mixin signature cascades through every subsequent ticket.
+
+### Detailed Chain: T-003 ProgressReporter Protocol
+
+```
+T-001 (domain) ──► T-003 (generation/progress.py)
+  DurationEstimate      │
+                        ├──► T-006 Generation Stages
+                        │         (injected via constructor or method param)
+                        │
+                        ├──► T-007 Orchestrator Facade
+                        │         (creates StdoutProgressReporter for --headless;
+                        │          accepts ProgressReporter for injection in GUI)
+                        │
+                        └──► T-013 GenerationWorker (ui/workers.py)
+                                  (QtProgressReporter adapts protocol to
+                                   PySide6 signals for thread-safe UI updates)
+```
+
+**Key chain insight:** T-003 is a **fan-out leaf** — it defines the protocol that all downstream reporting consumers will depend on, but has no existing consumers at creation time. This makes it the safest ticket to implement early: the interface can be designed cleanly without breaking anything. The risk is **design adequacy**: if the protocol is missing a method that downstream needs (e.g., `set_total_steps` for indeterminate progress), later tickets will need to retrofit.
 
 ## Affected Files by Layer
 
@@ -112,27 +145,27 @@ T-001 (domain) ──► T-002 (plugins/base.py)
 > **Test-first coupling:** `test_plugin_base.py` and `conftest.py` reference `forge.plugins.base` imports before the module exists.
 > T-002 must export exactly `PluginBase`, `Configurable`, `FileProvider`, `CommandRunner`, `DependencyProvider` with no naming mismatches.
 
-### Generation Layer (T-005–T-007)
-| File | Depends on |
-|---|---|
-| `src/forge/generation/__init__.py` | — |
-| `src/forge/generation/registry.py` | `TemplateDefinition`, `ProjectSpec` |
-| `src/forge/generation/validation.py` | `Question`, `ValidationRule`, `ProjectSpec` |
-| `src/forge/generation/progress.py` | (none — independent) |
-| `src/forge/generation/stages/base.py` | `ProjectSpec`, `GeneratedFile` |
-| `src/forge/generation/stages/directory_initializer.py` | `ProjectSpec` |
-| `src/forge/generation/stages/shared_structure_scaffolder.py` | `ProjectSpec`, `DurationEstimate` |
-| `src/forge/generation/stages/plugin_execution_engine.py` | `ProjectSpec`, `GeneratedFile` |
-| `src/forge/generation/stages/justfile_generator.py` | `ProjectSpec` |
-| `src/forge/generation/stages/project_documentation_writer.py` | `ProjectSpec` |
-| `src/forge/generation/stages/agent_skill_scaffolder.py` | `ProjectSpec` |
-| `src/forge/generation/orchestrator.py` | `TemplateDefinition`, `Question`, `ProjectSpec`, `DurationEstimate` |
+### Generation Layer (T-003, T-005–T-007)
+| File | Status | Action | Depends on |
+|---|---|---|---|
+| `src/forge/generation/__init__.py` | — | **UPDATE** from empty | Re-exports ProgressReporter, StdoutProgressReporter, MockProgressReporter |
+| `src/forge/generation/progress.py` | — | **CREATE** | `DurationEstimate` (from domain) |
+| `src/forge/generation/registry.py` | Pending | — | `TemplateDefinition`, `ProjectSpec` |
+| `src/forge/generation/validation.py` | Pending | — | `Question`, `ValidationRule`, `ProjectSpec` |
+| `src/forge/generation/stages/base.py` | Pending | — | `ProjectSpec`, `GeneratedFile` |
+| `src/forge/generation/stages/directory_initializer.py` | Pending | — | `ProjectSpec` |
+| `src/forge/generation/stages/shared_structure_scaffolder.py` | Pending | — | `ProjectSpec`, `DurationEstimate` |
+| `src/forge/generation/stages/plugin_execution_engine.py` | Pending | — | `ProjectSpec`, `GeneratedFile` |
+| `src/forge/generation/stages/justfile_generator.py` | Pending | — | `ProjectSpec` |
+| `src/forge/generation/stages/project_documentation_writer.py` | Pending | — | `ProjectSpec` |
+| `src/forge/generation/stages/agent_skill_scaffolder.py` | Pending | — | `ProjectSpec` |
+| `src/forge/generation/orchestrator.py` | Pending | — | `TemplateDefinition`, `Question`, `ProjectSpec`, `DurationEstimate` |
 
-### Infrastructure Layer (T-004)
-| File | Domain imports |
-|---|---|
-| `src/forge/infrastructure/__init__.py` | None |
-| `src/forge/infrastructure/transaction.py` | None |
+### Infrastructure Layer (T-004, ⚠ T-003 creates placeholder)
+| File | Status | Action | Depends on |
+|---|---|---|---|
+| `src/forge/infrastructure/__init__.py` | — | **CREATE** (placeholder, required by T-003's AC-8 AST scanner) | None |
+| `src/forge/infrastructure/transaction.py` | Pending | — | None |
 
 ### UI Layer (T-012–T-015)
 | File | Domain dependency |
@@ -183,3 +216,7 @@ DurationEstimate(estimated_seconds, has_slow_steps, slow_step_details)
 | Discovery conflict resolution (entry_points vs .plugins/) | T-005 | Medium — priority tiers + strict mode |
 | Atomic generation staging → commit/rollback | T-004 | Medium — partial failure recovery |
 | QtProgressReporter bridging protocol → PySide6 signals | T-013 | Medium — thread safety |
+| **Exception `__eq__` identity gotcha** — `test_progress.py:66-67` compares tuple containing raw `Exception` object; `ValueError("config err") == ValueError("config err")` is `False` because `BaseException` inherits `object.__eq__` (identity). A naive `MockProgressReporter` storing the raw exception fails this assertion. | T-003 | **High** — requires non-obvious implementation (store call metadata, not raw exception) |
+| **AC-8 AST scanner requires `forge.infrastructure` import in every generation/ file** — test iterates all `.py` files in `generation/` and fails if any lacks a `from forge.infrastructure import ...` statement. Both `progress.py` and `__init__.py` must contain it. | T-003 | **High** — creates cross-layer ordering dependency (T-003 must create `infrastructure/__init__.py` before T-004) |
+| `should_cancel()` return value contract — `MockProgressReporter` defaults to `False`; `StdoutProgressReporter` behavior unspecified. Downstream (`T-013 QtProgressReporter`) may need thread-safe cancellation signal. | T-003 | Low — clean interface now, future-proofing needed |
+| `test_progress.py` already exists (169 lines, 9 AC classes) — implementation must match exact method signatures, return types, and export names. Any mismatch causes test failures. | T-003 | Low — well-documented by the test itself |
