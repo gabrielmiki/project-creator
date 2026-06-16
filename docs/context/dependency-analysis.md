@@ -166,6 +166,59 @@ T-003 (ProgressReporter) ──► T-004 (infrastructure/transaction.py)
 
 **Import chain coupling:** T-003's AC-8 AST scanner (`test_progress.py:TestAC8`) requires every `.py` in `generation/` to import from `forge.infrastructure`. T-004's replacement of `_PLACEHOLDER` with `GenerationTransaction` must preserve this import — the `as _` alias + `# noqa: F401` pattern satisfies the scanner while keeping the import as a no-op placeholder for future consumer files.
 
+### Detailed Chain: T-005 PluginRegistry + ValidationEngine
+
+```
+T-001 (domain) ──► T-002 (plugins/base.py) ──► T-005 (generation/registry.py + validation.py)
+  ProjectSpec,            PluginBase                 │
+  TemplateDefinition,                                 ├── discovers plugins via entry_points + .plugins/
+  Question,                                            │   (importlib.metadata, pathlib I/O)
+  QuestionType,                                        │
+  ValidationRule                                       ├── resolves plugin_id → PluginBase instance
+                                                       │
+                                                       ├── topological_sort (requires + run_after)
+                                                       │   └── CycleDependencyError on cycles
+                                                       │
+                                                       ├── validate_spec(ProjectSpec) → list[ValidationError]
+                                                       │   ├── project_name non-empty
+                                                       │   ├── template valid + backend_id resolvable
+                                                       │   ├── frontend_id resolvable (if set)
+                                                       │   └── domains non-empty
+                                                       │
+                                                       ├── validate_plugin_config(id, config, questions)
+                                                       │   ├── required keys present
+                                                       │   ├── INTEGER: min/max bounds
+                                                       │   ├── STRING: pattern regex
+                                                       │   ├── CHOICE: valid option
+                                                       │   └── MULTI_SELECT: all valid options
+                                                       │
+                                                       ├──► T-006 Generation Stages
+                                                       │     (plugin_execution_engine consumes
+                                                       │      topological_sort order)
+                                                       │
+                                                       ├──► T-007 Orchestrator Facade
+                                                       │     (creates PluginRegistry, ValidationEngine;
+                                                       │      calls discover(), validate_spec(),
+                                                       │      resolve_many(), topological_sort())
+                                                       │
+                                                       ├──► T-013 GenerationWorker (ui/workers.py)
+                                                       │     (validation errors → UI error display)
+                                                       │
+                                                       ├──► T-014 Wizard Screens 1-3
+                                                       │     (get_available_backends/frontends
+                                                       │      → template selection lists)
+                                                       │
+                                                       └──► T-016/T-017/T-018 Integration Tests
+                                                             (pipeline: spec validation → plugin
+                                                              resolution → staged generation)
+```
+
+**Key chain insight:** T-005 is a **fan-in node** — it consumes the domain models (T-001) and PluginBase (T-002) and exposes the resolved, validated plugin set to every downstream ticket. Unlike T-002 (interface bottleneck) or T-004 (I/O gate), T-005's risk is **test-contract coupling**: the 718 combined lines of existing tests in `test_registry.py` and `test_validation.py` define the exact API, error types, and behavior. Any method signature mismatch, missing exception type, or return type deviation causes immediate test failure.
+
+**Architectural tension:** `registry.py` performs filesystem I/O (reading `.plugins/` directory, calling `importlib.metadata.entry_points()`), which violates the rule that "Infrastructure is the only I/O layer." The tests work around this via `patch` and `MagicMock`, but the production code embeds I/O directly in the generation layer — a design trade-off accepted by the ticket spec.
+
+**AC-8 coupling:** `test_progress.py:TestAC8` requires every `.py` in `generation/` to import from `forge.infrastructure`. Both `registry.py` and `validation.py` must include `from forge.infrastructure import GenerationTransaction as _  # noqa: F401` or T-003 tests fail.
+
 ## Affected Files by Layer
 
 ### Domain Layer (T-001 — ✅ complete)
@@ -197,8 +250,10 @@ T-003 (ProgressReporter) ──► T-004 (infrastructure/transaction.py)
 |---|---|---|---|
 | `src/forge/generation/__init__.py` | ✅ **Created (T-003)** → **T-004 import update** | Re-exports ProgressReporter, StdoutProgressReporter, MockProgressReporter; changes `_PLACEHOLDER` → `GenerationTransaction` import | `DurationEstimate`, `GenerationTransaction` (replaces no-op) |
 | `src/forge/generation/progress.py` | ✅ **Created (T-003)** → **T-004 import update** | Changes `_PLACEHOLDER` → `GenerationTransaction` import | `DurationEstimate`, `GenerationTransaction` (replaces no-op) |
-| `src/forge/generation/registry.py` | Pending | — | `TemplateDefinition`, `ProjectSpec` |
-| `src/forge/generation/validation.py` | Pending | — | `Question`, `ValidationRule`, `ProjectSpec` |
+| `src/forge/generation/registry.py` | **CREATE (T-005)** | `PluginRegistry` class: discovery, resolution, topological sort, missing deps | `PluginBase`, `TemplateDefinition`, `ProjectSpec`, `importlib.metadata`, `pathlib` |
+| `src/forge/generation/validation.py` | **CREATE (T-005)** | `ValidationEngine` + `ValidationError` dataclass | `PluginRegistry`, `Question`, `QuestionType`, `ValidationRule`, `ProjectSpec` |
+| `tests/unit/test_registry.py` | Already exists (T-005) | 411 lines, 23 ACs (constructor → topo sort) | `PluginRegistry`, `PluginBase`, `DiscoveryError`, `CycleDependencyError` |
+| `tests/unit/test_validation.py` | Already exists (T-005) | 307 lines, 11 ACs (spec + config validation) | `ValidationEngine`, `ValidationError`, `PluginRegistry` (mock) |
 | `src/forge/generation/stages/base.py` | Pending | — | `ProjectSpec`, `GeneratedFile` |
 | `src/forge/generation/stages/directory_initializer.py` | Pending | — | `ProjectSpec` |
 | `src/forge/generation/stages/shared_structure_scaffolder.py` | Pending | — | `ProjectSpec`, `DurationEstimate` |
@@ -261,8 +316,14 @@ DurationEstimate(estimated_seconds, has_slow_steps, slow_step_details)
 | **`@property @abstractmethod` + class-level assignment** — tests use `name = "file-only"` class attributes, which satisfy the ABC contract via data descriptor protocol | T-002 | Low — well-known Python idiom, but dual patterns (class attr vs instance property) can confuse newcomers |
 | **AC-4 static import analysis requires unconditional domain import** — test `test_plugin_base.py:165-211` calls `pytest.fail` if no `forge.domain` import is found; `TYPE_CHECKING`-only imports would fail the AST scan | T-002 | Low — constraint forces non-conditional import |
 | **Test-first coupling** — `conftest.py` and `test_plugin_base.py` import from `forge.plugins.base` before it exists; any rename or signature change breaks tests silently | T-002 | Medium — tests act as an implicit API contract, any deviation causes cascading test failures |
-| Plugin dependency ordering → topological sort | T-005 | Medium — cycle detection |
-| Discovery conflict resolution (entry_points vs .plugins/) | T-005 | Medium — priority tiers + strict mode |
+| **AC-8 AST scanner requires `forge.infrastructure` import in new generation/ files** — both `registry.py` and `validation.py` must include `from forge.infrastructure import GenerationTransaction as _  # noqa: F401` or T-003's `test_progress.py:TestAC8` fails | T-005 | **High** — cross-ticket test coupling; easy to forget when creating new files |
+| **Filesystem I/O in generation layer** — `registry.py` reads `.plugins/` directory and calls `importlib.metadata.entry_points()`. Violates "infrastructure is the only I/O layer" architectural rule by design | T-005 | **High** — architectural tension; tests stub the I/O but production code embeds it |
+| **`.plugins/` dynamic module loading** — must load `.py` files via `importlib.util.spec_from_file_location` + `exec()` or equivalent. Error handling for missing `plugin` attribute, syntax errors, or import errors is unspecified | T-005 | Medium — untested edge cases in dynamic loading |
+| **Topological sort: `requires` (hard) vs `run_after` (soft) edges** — cycle detection must only fail on hard-edge cycles. AC-19 expects `CycleDependencyError` with cycle path string. Soft edges (AC-23) must not cause false positives | T-005 | Medium — dual-edge semantics are easy to get wrong |
+| **Discovery conflict resolution — priority tiers + strict mode** — entry_points (priority 10) wins over .plugins/ (priority 5); warning logged on non-strict conflict; `DiscoveryError` raised in strict mode | T-005 | Medium — ordering of discovery sources matters |
+| **Unknown plugin ID in `get_missing_dependencies`** — must raise `KeyError` before accessing `self._discovered` | T-005 | Low — well-scoped but easy to miss ordering |
+| **BOOLEAN question type — no explicit validation rule** — spec defines rules for INTEGER, STRING, CHOICE, MULTI_SELECT only. Missing required key check still applies to BOOLEAN | T-005 | Low — unspecified but trivial |
+| **Test-contract coupling (718 combined lines)** — `test_registry.py` + `test_validation.py` define exact API; any signature mismatch causes cascading test failures | T-005 | Medium — tests are the spec; high implementation cost to fix if wrong |
 | **AC-8 AST scanner requires `forge.infrastructure` import in generation/ files** — T-004 replaces `_PLACEHOLDER` with `GenerationTransaction` but must preserve the `import GenerationTransaction as _` + `# noqa: F401` pattern or T-003's `test_progress.py:TestAC8` fails | T-004→T-003 | **High** — cross-ticket test coupling; import alias must match exactly |
 | **Cross-filesystem `os.rename` (EXDEV)** — `commit()` uses `os.rename` which fails with `EXDEV` if staging/ and output_dir/ are on different filesystems. Tests use `tmp_path` (same fs), making this invisible to the test suite | T-004 | Medium — unrecoverable runtime error in production if user specifies output on a different mount |
 | **Platform-specific `PermissionError` vs `FileExistsError`** — `os.rename` raises `PermissionError` on Windows when destination exists (not `FileExistsError`). AC-10 asserts `FileExistsError`. Implementation must use explicit `os.path.exists()` pre-check | T-004 | Medium — test would fail on Windows CI |
