@@ -289,15 +289,25 @@ Implementations:
 ```python
 class GenerationTransaction:
     def __init__(self, output_dir: Path):
-        self.staging = output_dir / ".forge-staging"
+        self.staging: Path = output_dir / ".forge-staging"
         self.manifest: list[Path] = []
 
-    def stage_file(self, path: Path, content: str) -> None: ...
-    def commit(self) -> None: ...            # atomic rename staging → output
-    def rollback(self) -> None: ...          # clean up staging
+    def stage_file(self, relative_path: str, content: str) -> Path: ...
+    def stage_directory(self, relative_path: str) -> Path: ...
+    def add_checkpoint(self, paths: list[Path]) -> None: ...
+    def commit(self) -> None: ...            # os.rename staging → output; raises FileExistsError on collision
+    def rollback(self) -> None: ...          # clean up staging + checkpoint paths
+    def __enter__(self) -> "GenerationTransaction": ...
+    def __exit__(self, exc_type, exc_val, exc_tb) -> bool: ...
 ```
 
-Scaffold commands (which can't be staged) use checkpoint-based rollback: track created paths, delete on failure.
+- `stage_file()` writes to staging dir, returns the staging path.
+- `stage_directory()` creates the directory tree under staging, returns the staging path.
+- `add_checkpoint()` registers external paths (from scaffold commands) for rollback. If a checkpoint path is a directory, it is deleted recursively via `shutil.rmtree` on rollback.
+- `commit()` uses `os.rename` (same-filesystem only). On collision with an existing file, raises `FileExistsError`. Staging is NOT removed on failure so `rollback()` can recover.
+- `rollback()` removes staging dir and all checkpoint paths. Silent if already clean.
+- Context manager: `__exit__` calls `commit()` on success, `rollback()` on exception.
+- Scaffold commands that can't be staged use `add_checkpoint()` to register created files/dirs; if generation fails, those paths are deleted during rollback.
 
 ### ValidationEngine
 

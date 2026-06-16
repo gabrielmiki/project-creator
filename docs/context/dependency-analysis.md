@@ -72,12 +72,32 @@ Legend: ──► direct dependency     ~ ~ ~ ► transitive dependency
             ├─► [tests] T-017 Integration Tests — CLI/Pipeline
             └─► [tests] T-018 Integration Tests — Full Pipeline
 
+[infrastructure]  T-004 GenerationTransaction
+      (imports: nothing — pure stdlib: pathlib, os, shutil)
+        │
+        ├─► [generation] T-006 Generation Stages
+        │       └── stage_file / stage_directory / add_checkpoint
+        │
+        ├─► [generation] T-007 Orchestrator Facade + CLI
+        │       └── creates GenerationTransaction, passes through 6 stages
+        │
+        ├─► [ui] T-013 GenerationWorker
+        │       └── orchestrator wraps transaction for generation
+        │
+        └─► [tests] T-016, T-017, T-018 Integration Tests
+                └── test atomic commit/rollback end-to-end
+
 Architecture dependency notes:
     T-003 ProgressReporter Protocol — conceptually independent (no domain imports)
         but test AC-8 (`test_progress.py:141-152`) enforces that every generation/
         file imports from `forge.infrastructure`, creating a practical ordering
         requirement on infrastructure/__init__.py being present.
-    T-004 GenerationTransaction — fully independent, no imports from any layer
+        T-003 creates the _PLACEHOLDER stub → T-004 replaces it with real exports.
+    T-004 GenerationTransaction — imports nothing from any Forge layer (pure stdlib).
+        However, it has a reverse coupling from T-003: T-003's AC-8 AST scanner
+        enforces that every generation/ file imports from forge.infrastructure.
+        T-004 must preserve this import (using `as _` + `# noqa: F401`) or T-003
+        tests break. Downstream: T-006, T-007, T-013, T-016–T-018.
 ```
 
 ### Detailed Chain: T-002 PluginBase + Mixins
@@ -119,6 +139,33 @@ T-001 (domain) ──► T-003 (generation/progress.py)
 
 **Key chain insight:** T-003 is a **fan-out leaf** — it defines the protocol that all downstream reporting consumers will depend on, but has no existing consumers at creation time. This makes it the safest ticket to implement early: the interface can be designed cleanly without breaking anything. The risk is **design adequacy**: if the protocol is missing a method that downstream needs (e.g., `set_total_steps` for indeterminate progress), later tickets will need to retrofit.
 
+### Detailed Chain: T-004 GenerationTransaction
+
+```
+T-003 (ProgressReporter) ──► T-004 (infrastructure/transaction.py)
+  creates __init__.py             │
+  with _PLACEHOLDER stub           ├──► T-006 Generation Stages
+                                   │         (stage_file, stage_directory, add_checkpoint
+                                   │          called inside context manager block)
+                                   │
+                                   ├──► T-007 Orchestrator Facade
+                                   │         (creates GenerationTransaction(output_dir);
+                                   │          passes through stages as shared context;
+                                   │          __exit__ handles commit/rollback)
+                                   │
+                                   ├──► T-013 GenerationWorker (ui/workers.py)
+                                   │         (orchestrator wrapped in worker; rollback
+                                   │          triggers on exception or cancellation)
+                                   │
+                                   └──► T-016/T-017/T-018 Integration Tests
+                                         (test: "when CommandRunner raises
+                                          exception → rollback called, no partial files")
+```
+
+**Key chain insight:** T-004 is the narrowest **I/O gate** in the dependency graph. Every downstream ticket that generates files (stages, orchestrator, UI worker, integration tests) depends on `GenerationTransaction` as the sole atomic commit/rollback mechanism. However, unlike T-002 (which requires careful interface design for 4 mixins), T-004's risk is **implementation correctness** — the 8-method API must correctly handle filesystem edge cases (collision, cross-platform rename, directory recursion) that are difficult to validate in spec review alone. The 14 tests in `test_transaction.py` provide broad coverage (12 ACs, 8/8 methods, happy + error + edge), but the cross-filesystem `EXDEV` case and Windows `PermissionError` are not tested.
+
+**Import chain coupling:** T-003's AC-8 AST scanner (`test_progress.py:TestAC8`) requires every `.py` in `generation/` to import from `forge.infrastructure`. T-004's replacement of `_PLACEHOLDER` with `GenerationTransaction` must preserve this import — the `as _` alias + `# noqa: F401` pattern satisfies the scanner while keeping the import as a no-op placeholder for future consumer files.
+
 ## Affected Files by Layer
 
 ### Domain Layer (T-001 — ✅ complete)
@@ -145,11 +192,11 @@ T-001 (domain) ──► T-003 (generation/progress.py)
 > **Test-first coupling:** `test_plugin_base.py` and `conftest.py` reference `forge.plugins.base` imports before the module exists.
 > T-002 must export exactly `PluginBase`, `Configurable`, `FileProvider`, `CommandRunner`, `DependencyProvider` with no naming mismatches.
 
-### Generation Layer (T-003, T-005–T-007)
+### Generation Layer (T-003, T-004 import update, T-005–T-007)
 | File | Status | Action | Depends on |
 |---|---|---|---|
-| `src/forge/generation/__init__.py` | — | **UPDATE** from empty | Re-exports ProgressReporter, StdoutProgressReporter, MockProgressReporter |
-| `src/forge/generation/progress.py` | — | **CREATE** | `DurationEstimate` (from domain) |
+| `src/forge/generation/__init__.py` | ✅ **Created (T-003)** → **T-004 import update** | Re-exports ProgressReporter, StdoutProgressReporter, MockProgressReporter; changes `_PLACEHOLDER` → `GenerationTransaction` import | `DurationEstimate`, `GenerationTransaction` (replaces no-op) |
+| `src/forge/generation/progress.py` | ✅ **Created (T-003)** → **T-004 import update** | Changes `_PLACEHOLDER` → `GenerationTransaction` import | `DurationEstimate`, `GenerationTransaction` (replaces no-op) |
 | `src/forge/generation/registry.py` | Pending | — | `TemplateDefinition`, `ProjectSpec` |
 | `src/forge/generation/validation.py` | Pending | — | `Question`, `ValidationRule`, `ProjectSpec` |
 | `src/forge/generation/stages/base.py` | Pending | — | `ProjectSpec`, `GeneratedFile` |
@@ -161,11 +208,13 @@ T-001 (domain) ──► T-003 (generation/progress.py)
 | `src/forge/generation/stages/agent_skill_scaffolder.py` | Pending | — | `ProjectSpec` |
 | `src/forge/generation/orchestrator.py` | Pending | — | `TemplateDefinition`, `Question`, `ProjectSpec`, `DurationEstimate` |
 
-### Infrastructure Layer (T-004, ⚠ T-003 creates placeholder)
+### Infrastructure Layer (T-003 creates __init__.py → T-004 replaces placeholder + creates transaction.py)
 | File | Status | Action | Depends on |
 |---|---|---|---|
-| `src/forge/infrastructure/__init__.py` | — | **CREATE** (placeholder, required by T-003's AC-8 AST scanner) | None |
-| `src/forge/infrastructure/transaction.py` | Pending | — | None |
+| `src/forge/infrastructure/__init__.py` | ✅ **Created (T-003)** → **Update (T-004)** | Replace `_PLACEHOLDER` with `from forge.infrastructure.transaction import GenerationTransaction` | T-003 scaffold (placeholder → real export) |
+| `src/forge/infrastructure/transaction.py` | **CREATE (T-004)** | `GenerationTransaction` class — 8 methods: `__init__`, `stage_file`, `stage_directory`, `add_checkpoint`, `commit`, `rollback`, `__enter__`, `__exit__` | None (pure stdlib) |
+| `src/forge/generation/progress.py` | ✅ **Created (T-003)** → **Update (T-004)** | Change import: `_PLACEHOLDER as _` → `GenerationTransaction as _` | `GenerationTransaction` (replaces no-op import) |
+| `src/forge/generation/__init__.py` | ✅ **Created (T-003)** → **Update (T-004)** | Change import: `_PLACEHOLDER as _` → `GenerationTransaction as _` | `GenerationTransaction` (replaces no-op import) |
 
 ### UI Layer (T-012–T-015)
 | File | Domain dependency |
@@ -214,7 +263,12 @@ DurationEstimate(estimated_seconds, has_slow_steps, slow_step_details)
 | **Test-first coupling** — `conftest.py` and `test_plugin_base.py` import from `forge.plugins.base` before it exists; any rename or signature change breaks tests silently | T-002 | Medium — tests act as an implicit API contract, any deviation causes cascading test failures |
 | Plugin dependency ordering → topological sort | T-005 | Medium — cycle detection |
 | Discovery conflict resolution (entry_points vs .plugins/) | T-005 | Medium — priority tiers + strict mode |
-| Atomic generation staging → commit/rollback | T-004 | Medium — partial failure recovery |
+| **AC-8 AST scanner requires `forge.infrastructure` import in generation/ files** — T-004 replaces `_PLACEHOLDER` with `GenerationTransaction` but must preserve the `import GenerationTransaction as _` + `# noqa: F401` pattern or T-003's `test_progress.py:TestAC8` fails | T-004→T-003 | **High** — cross-ticket test coupling; import alias must match exactly |
+| **Cross-filesystem `os.rename` (EXDEV)** — `commit()` uses `os.rename` which fails with `EXDEV` if staging/ and output_dir/ are on different filesystems. Tests use `tmp_path` (same fs), making this invisible to the test suite | T-004 | Medium — unrecoverable runtime error in production if user specifies output on a different mount |
+| **Platform-specific `PermissionError` vs `FileExistsError`** — `os.rename` raises `PermissionError` on Windows when destination exists (not `FileExistsError`). AC-10 asserts `FileExistsError`. Implementation must use explicit `os.path.exists()` pre-check | T-004 | Medium — test would fail on Windows CI |
+| **Checkpoint directory deletion via `shutil.rmtree`** — `add_checkpoint` with directory paths requires recursive deletion. AC-6 only tests file checkpoints | T-004 | Medium — untested edge case; failure would leave partial directories on rollback |
+| **Transaction single-use enforcement** — AC-11 tests double-commit raises `RuntimeError`, but `stage_file()` after commit, `rollback()` after rollback, or `stage_file()` after rollback are not specified | T-004 | Low — sensible default (single-use) but no test for stale-state misuse |
+| **Empty/noop commit** — committing with zero staged files has no AC. Current spec implies silent success | T-004 | Low — no test coverage; unusual edge case |
 | QtProgressReporter bridging protocol → PySide6 signals | T-013 | Medium — thread safety |
 | **Exception `__eq__` identity gotcha** — `test_progress.py:66-67` compares tuple containing raw `Exception` object; `ValueError("config err") == ValueError("config err")` is `False` because `BaseException` inherits `object.__eq__` (identity). A naive `MockProgressReporter` storing the raw exception fails this assertion. | T-003 | **High** — requires non-obvious implementation (store call metadata, not raw exception) |
 | **AC-8 AST scanner requires `forge.infrastructure` import in every generation/ file** — test iterates all `.py` files in `generation/` and fails if any lacks a `from forge.infrastructure import ...` statement. Both `progress.py` and `__init__.py` must contain it. | T-003 | **High** — creates cross-layer ordering dependency (T-003 must create `infrastructure/__init__.py` before T-004) |
