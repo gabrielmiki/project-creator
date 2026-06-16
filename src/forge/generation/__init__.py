@@ -3,7 +3,7 @@ from forge.generation.progress import (
     ProgressReporter,
     StdoutProgressReporter,
 )
-from forge.infrastructure import _PLACEHOLDER as _  # noqa: F401
+from forge.infrastructure import GenerationTransaction as _  # noqa: F401
 
 __all__ = [
     "ProgressReporter",

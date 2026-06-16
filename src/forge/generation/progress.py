@@ -1,7 +1,7 @@
 from typing import Protocol, runtime_checkable
 
 from forge.domain import DurationEstimate
-from forge.infrastructure import _PLACEHOLDER as _  # noqa: F401
+from forge.infrastructure import GenerationTransaction as _  # noqa: F401
 
 
 @runtime_checkable
