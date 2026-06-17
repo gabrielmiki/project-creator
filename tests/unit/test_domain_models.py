@@ -174,9 +174,7 @@ class TestAC7_NoCrossLayerImports:
 
 class TestAC8_GeneratedFile:
     def test_all_fields_match(self) -> None:
-        gf = GeneratedFile(
-            path=Path("src/main.py"), content="print('hello')", executable=True
-        )
+        gf = GeneratedFile(path=Path("src/main.py"), content="print('hello')", executable=True)
         assert gf.path == Path("src/main.py")
         assert gf.content == "print('hello')"
         assert gf.executable is True
@@ -198,9 +196,7 @@ class TestAC9_DurationEstimate:
         assert de.slow_step_details == ["npm install"]
 
     def test_empty_slow_step_details(self) -> None:
-        de = DurationEstimate(
-            estimated_seconds=10, has_slow_steps=False, slow_step_details=[]
-        )
+        de = DurationEstimate(estimated_seconds=10, has_slow_steps=False, slow_step_details=[])
         assert de.slow_step_details == []
 
 
@@ -211,9 +207,7 @@ class TestEdgeCases:
     def test_project_spec_empty_config(self) -> None:
         spec = ProjectSpec(
             project_name="empty",
-            template=TemplateDefinition(
-                id="t1", display_name="T1", description="", backend_id="x"
-            ),
+            template=TemplateDefinition(id="t1", display_name="T1", description="", backend_id="x"),
             domains=[],
             config={},
         )

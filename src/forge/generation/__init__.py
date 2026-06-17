@@ -1,4 +1,5 @@
 from forge.generation.errors import DirectoryNotEmptyError, MissingDependencyError
+from forge.generation.orchestrator import GenerationResult, Orchestrator
 from forge.generation.progress import (
     MockProgressReporter,
     ProgressReporter,
@@ -39,4 +40,6 @@ __all__ = [
     "JustfileGenerator",
     "ProjectDocumentationWriter",
     "AgentSkillScaffolder",
+    "Orchestrator",
+    "GenerationResult",
 ]

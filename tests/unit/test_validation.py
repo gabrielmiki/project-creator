@@ -12,11 +12,11 @@ from forge.domain import (
     TemplateDefinition,
     ValidationRule,
 )
-from forge.generation.validation import ValidationEngine, ValidationError
+from forge.generation.validation import ValidationEngine
 from forge.plugins.base import PluginBase
 
-
 # ── Fixtures ──
+
 
 @pytest.fixture
 def mock_registry():
@@ -71,22 +71,28 @@ def valid_spec_with_frontend() -> ProjectSpec:
 
 # ── Spec Validation (AC-24 through AC-28) ──
 
-class TestAC24_28_SpecValidation:
 
+class TestAC24_28_SpecValidation:
     def test_valid_spec_returns_empty_errors(
-        self, engine: ValidationEngine, valid_spec: ProjectSpec,
+        self,
+        engine: ValidationEngine,
+        valid_spec: ProjectSpec,
     ) -> None:
         errors = engine.validate_spec(valid_spec)
         assert errors == []
 
     def test_valid_spec_with_frontend(
-        self, engine: ValidationEngine, valid_spec_with_frontend: ProjectSpec,
+        self,
+        engine: ValidationEngine,
+        valid_spec_with_frontend: ProjectSpec,
     ) -> None:
         errors = engine.validate_spec(valid_spec_with_frontend)
         assert errors == []
 
     def test_empty_project_name(
-        self, engine: ValidationEngine, valid_spec: ProjectSpec,
+        self,
+        engine: ValidationEngine,
+        valid_spec: ProjectSpec,
     ) -> None:
         spec = ProjectSpec(
             project_name="",
@@ -100,7 +106,9 @@ class TestAC24_28_SpecValidation:
         assert any(e.severity == "error" for e in errors)
 
     def test_empty_domains(
-        self, engine: ValidationEngine, valid_spec: ProjectSpec,
+        self,
+        engine: ValidationEngine,
+        valid_spec: ProjectSpec,
     ) -> None:
         spec = ProjectSpec(
             project_name=valid_spec.project_name,
@@ -113,7 +121,8 @@ class TestAC24_28_SpecValidation:
         assert any(e.field == "domains" for e in errors)
 
     def test_unresolvable_backend_id(
-        self, engine: ValidationEngine,
+        self,
+        engine: ValidationEngine,
     ) -> None:
         spec = ProjectSpec(
             project_name="myproject",
@@ -131,7 +140,8 @@ class TestAC24_28_SpecValidation:
         assert any(e.field == "template.backend_id" for e in errors)
 
     def test_multiple_violations(
-        self, engine: ValidationEngine,
+        self,
+        engine: ValidationEngine,
     ) -> None:
         spec = ProjectSpec(
             project_name="",
@@ -153,10 +163,11 @@ class TestAC24_28_SpecValidation:
 
 # ── Plugin Config Validation (AC-29 through AC-34) ──
 
-class TestAC29_34_PluginConfigValidation:
 
+class TestAC29_34_PluginConfigValidation:
     def test_missing_required_key(
-        self, engine: ValidationEngine,
+        self,
+        engine: ValidationEngine,
     ) -> None:
         questions = [
             Question(key="host", label="Host", question_type=QuestionType.STRING, required=True),
@@ -166,7 +177,8 @@ class TestAC29_34_PluginConfigValidation:
         assert any(e.field == "host" for e in errors)
 
     def test_integer_below_min(
-        self, engine: ValidationEngine,
+        self,
+        engine: ValidationEngine,
     ) -> None:
         questions = [
             Question(
@@ -181,7 +193,8 @@ class TestAC29_34_PluginConfigValidation:
         assert any(e.field == "port" for e in errors)
 
     def test_integer_above_max(
-        self, engine: ValidationEngine,
+        self,
+        engine: ValidationEngine,
     ) -> None:
         questions = [
             Question(
@@ -196,7 +209,8 @@ class TestAC29_34_PluginConfigValidation:
         assert any(e.field == "port" for e in errors)
 
     def test_integer_valid_range(
-        self, engine: ValidationEngine,
+        self,
+        engine: ValidationEngine,
     ) -> None:
         questions = [
             Question(
@@ -210,7 +224,8 @@ class TestAC29_34_PluginConfigValidation:
         assert errors == []
 
     def test_choice_invalid_option(
-        self, engine: ValidationEngine,
+        self,
+        engine: ValidationEngine,
     ) -> None:
         questions = [
             Question(
@@ -225,7 +240,8 @@ class TestAC29_34_PluginConfigValidation:
         assert any(e.field == "db" for e in errors)
 
     def test_choice_valid_option(
-        self, engine: ValidationEngine,
+        self,
+        engine: ValidationEngine,
     ) -> None:
         questions = [
             Question(
@@ -239,7 +255,8 @@ class TestAC29_34_PluginConfigValidation:
         assert errors == []
 
     def test_string_pattern_mismatch(
-        self, engine: ValidationEngine,
+        self,
+        engine: ValidationEngine,
     ) -> None:
         questions = [
             Question(
@@ -254,7 +271,8 @@ class TestAC29_34_PluginConfigValidation:
         assert any(e.field == "name" for e in errors)
 
     def test_string_valid_pattern(
-        self, engine: ValidationEngine,
+        self,
+        engine: ValidationEngine,
     ) -> None:
         questions = [
             Question(
@@ -268,7 +286,8 @@ class TestAC29_34_PluginConfigValidation:
         assert errors == []
 
     def test_multi_select_invalid_option(
-        self, engine: ValidationEngine,
+        self,
+        engine: ValidationEngine,
     ) -> None:
         questions = [
             Question(
@@ -279,13 +298,16 @@ class TestAC29_34_PluginConfigValidation:
             ),
         ]
         errors = engine.validate_plugin_config(
-            "myplugin", {"features": ["auth", "billing"]}, questions,
+            "myplugin",
+            {"features": ["auth", "billing"]},
+            questions,
         )
         assert len(errors) >= 1
         assert any(e.field == "features" for e in errors)
 
     def test_multi_select_all_valid(
-        self, engine: ValidationEngine,
+        self,
+        engine: ValidationEngine,
     ) -> None:
         questions = [
             Question(
@@ -296,12 +318,15 @@ class TestAC29_34_PluginConfigValidation:
             ),
         ]
         errors = engine.validate_plugin_config(
-            "myplugin", {"features": ["auth", "admin"]}, questions,
+            "myplugin",
+            {"features": ["auth", "admin"]},
+            questions,
         )
         assert errors == []
 
     def test_empty_questions_returns_empty(
-        self, engine: ValidationEngine,
+        self,
+        engine: ValidationEngine,
     ) -> None:
         errors = engine.validate_plugin_config("myplugin", {"key": "val"}, [])
         assert errors == []
