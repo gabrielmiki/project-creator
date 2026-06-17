@@ -10,6 +10,7 @@ class GenerationTransaction:
     def __init__(self, output_dir: Path) -> None:
         self.staging: Path = output_dir / ".forge-staging"
         self.manifest: list[Path] = []
+        self.requirements: list[str] = []
         self._output_dir: Path = output_dir
         self._checkpoints: list[Path] = []
         self._committed: bool = False

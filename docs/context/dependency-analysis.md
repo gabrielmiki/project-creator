@@ -64,9 +64,16 @@ Legend: ──► direct dependency     ~ ~ ~ ► transitive dependency
             │                     (uses: ProjectSpec, GeneratedFile, DurationEstimate)
             │
             ├─► [generation] T-006 Generation Stages (all 6)
-            │     (imports: ProjectSpec, GeneratedFile, DurationEstimate, ProgressReporter)
+            │     (imports: ProjectSpec, GeneratedFile, DurationEstimate,
+            │      ProgressReporter, GenerationTransaction,
+            │      PluginBase, FileProvider, CommandRunner, DependencyProvider,
+            │      PluginRegistry, CycleDependencyError,
+            │      DirectoryNotEmptyError, MissingDependencyError)
             │       │
-            │       └─► [generation] T-007 Orchestrator (via stages)
+            │       ├─► [generation] T-007 Orchestrator (sequence + orchestrate)
+            │       ├─► [tests] T-016 Integration Tests — Foundation
+            │       ├─► [tests] T-017 Integration Tests — CLI/Pipeline
+            │       └─► [tests] T-018 Integration Tests — Full Pipeline
             │
             ├─► [tests] T-016 Integration Tests — Foundation
             ├─► [tests] T-017 Integration Tests — CLI/Pipeline
@@ -98,6 +105,14 @@ Architecture dependency notes:
         enforces that every generation/ file imports from forge.infrastructure.
         T-004 must preserve this import (using `as _` + `# noqa: F401`) or T-003
         tests break. Downstream: T-006, T-007, T-013, T-016–T-018.
+    T-006 Generation Stages — test-first coupling via `test_stages.py` (638 lines,
+        14 ACs, 6 test classes). Every stage class name, module path, `run()` signature,
+        and error type is locked by the existing test file. Each of the 8 new files in
+        `stages/` must include a `from forge.infrastructure import GenerationTransaction as _  # noqa: F401`
+        to satisfy T-003's AC-8 scanner — this cross-ticket coupling is easy to miss.
+        `PluginExecutionEngine` is the riskiest stage: it simultaneously couples to
+        `PluginBase` mixins (T-002), `PluginRegistry.topological_sort()` (T-005),
+        `ProgressReporter.should_cancel()` (T-003), and `GenerationTransaction` (T-004).
 ```
 
 ### Detailed Chain: T-002 PluginBase + Mixins
@@ -219,6 +234,33 @@ T-001 (domain) ──► T-002 (plugins/base.py) ──► T-005 (generation/reg
 
 **AC-8 coupling:** `test_progress.py:TestAC8` requires every `.py` in `generation/` to import from `forge.infrastructure`. Both `registry.py` and `validation.py` must include `from forge.infrastructure import GenerationTransaction as _  # noqa: F401` or T-003 tests fail.
 
+### Detailed Chain: T-006 Generation Stages (all 6)
+
+T-006 is the ultimate fan-in node — it consumes from 5 upstream tickets and is contract-locked by the existing `tests/unit/test_stages.py` (638 lines).
+
+```
+T-001 (domain) ──────────────────────────────────────────┐
+  ProjectSpec, GeneratedFile, DurationEstimate            │
+                                                          │
+T-003 (progress) ──► T-004 (infrastructure)              │
+  ProgressReporter      GenerationTransaction              ├──► T-006 Generation Stages
+                                                          │      │
+T-002 (plugins/base) ──► T-005 (generation/registry)     │      ├──► T-007 Orchestrator
+  PluginBase               PluginRegistry                 │      ├──► T-013 GenWorker
+  FileProvider              topological_sort()             │      └──► T-016/T-017/T-018
+  CommandRunner             CycleDependencyError          │
+  DependencyProvider        MissingDependencyError ◄──────┘
+```
+
+**Key chain insight:** T-006 is the **ultimate fan-in node** — consuming from 5 upstream tickets (T-001 → T-005) with its entire API surface contract-locked by the test-first `test_stages.py` file. Any breaking change to domain models, plugin mixins, the progress protocol, the transaction API, or the registry sorts propagates through the stage implementations. The `PluginExecutionEngine` is the highest-risk stage because it simultaneously depends on T-002 mixin `isinstance()` checks, T-005 registry sorts, T-003 cancellation, and T-004 checkpoint registration.
+
+**Test-first coupling (638 lines):** Every stage class name, module path, `run()` signature, error type, and import path is defined by `test_stages.py`:
+- Import paths: `from forge.generation.stages.<module> import <StageClass>`
+- `run()` signature: `(spec: ProjectSpec, output_dir: Path, txn, progress) -> None`
+- `PluginExecutionEngine` constructor: takes `PluginRegistry` as argument
+- Error types: `DirectoryNotEmptyError`, `MissingDependencyError`, `CycleDependencyError`
+- All 8 new `stages/` files require the `from forge.infrastructure import GenerationTransaction as _  # noqa: F401` for T-003 AC-8 compliance
+
 ## Affected Files by Layer
 
 ### Domain Layer (T-001 — ✅ complete)
@@ -248,20 +290,23 @@ T-001 (domain) ──► T-002 (plugins/base.py) ──► T-005 (generation/reg
 ### Generation Layer (T-003, T-004 import update, T-005–T-007)
 | File | Status | Action | Depends on |
 |---|---|---|---|
-| `src/forge/generation/__init__.py` | ✅ **Created (T-003)** → **T-004 import update** | Re-exports ProgressReporter, StdoutProgressReporter, MockProgressReporter; changes `_PLACEHOLDER` → `GenerationTransaction` import | `DurationEstimate`, `GenerationTransaction` (replaces no-op) |
-| `src/forge/generation/progress.py` | ✅ **Created (T-003)** → **T-004 import update** | Changes `_PLACEHOLDER` → `GenerationTransaction` import | `DurationEstimate`, `GenerationTransaction` (replaces no-op) |
-| `src/forge/generation/registry.py` | **CREATE (T-005)** | `PluginRegistry` class: discovery, resolution, topological sort, missing deps | `PluginBase`, `TemplateDefinition`, `ProjectSpec`, `importlib.metadata`, `pathlib` |
-| `src/forge/generation/validation.py` | **CREATE (T-005)** | `ValidationEngine` + `ValidationError` dataclass | `PluginRegistry`, `Question`, `QuestionType`, `ValidationRule`, `ProjectSpec` |
-| `tests/unit/test_registry.py` | Already exists (T-005) | 411 lines, 23 ACs (constructor → topo sort) | `PluginRegistry`, `PluginBase`, `DiscoveryError`, `CycleDependencyError` |
-| `tests/unit/test_validation.py` | Already exists (T-005) | 307 lines, 11 ACs (spec + config validation) | `ValidationEngine`, `ValidationError`, `PluginRegistry` (mock) |
-| `src/forge/generation/stages/base.py` | Pending | — | `ProjectSpec`, `GeneratedFile` |
-| `src/forge/generation/stages/directory_initializer.py` | Pending | — | `ProjectSpec` |
-| `src/forge/generation/stages/shared_structure_scaffolder.py` | Pending | — | `ProjectSpec`, `DurationEstimate` |
-| `src/forge/generation/stages/plugin_execution_engine.py` | Pending | — | `ProjectSpec`, `GeneratedFile` |
-| `src/forge/generation/stages/justfile_generator.py` | Pending | — | `ProjectSpec` |
-| `src/forge/generation/stages/project_documentation_writer.py` | Pending | — | `ProjectSpec` |
-| `src/forge/generation/stages/agent_skill_scaffolder.py` | Pending | — | `ProjectSpec` |
-| `src/forge/generation/orchestrator.py` | Pending | — | `TemplateDefinition`, `Question`, `ProjectSpec`, `DurationEstimate` |
+| `src/forge/generation/__init__.py` | ✅ **Created (T-003/T-004)** → **T-006 update** | Re-exports ProgressReporter, StdoutProgressReporter, MockProgressReporter, PluginRegistry, ValidationEngine, errors + infrastructure import; T-006 adds re-exports for GenerationStage + all 6 stage classes | `DurationEstimate`, `GenerationTransaction` |
+| `src/forge/generation/progress.py` | ✅ **Created (T-003)** | ProgressReporter protocol, StdoutProgressReporter, MockProgressReporter | `DurationEstimate` |
+| `src/forge/generation/errors.py` | ✅ **Created (cross-ticket)** | DirectoryNotEmptyError, MissingDependencyError — both used by T-006 stages | None |
+| `src/forge/generation/registry.py` | ✅ **Created (T-005)** | PluginRegistry, CycleDependencyError, DiscoveryError | `PluginBase`, `TemplateDefinition`, `ProjectSpec` |
+| `src/forge/generation/validation.py` | ✅ **Created (T-005)** | ValidationEngine, ValidationError | `PluginRegistry`, `Question`, `QuestionType`, `ValidationRule`, `ProjectSpec` |
+| `tests/unit/test_registry.py` | Already exists (T-005) | 411 lines, 23 ACs (constructor → topo sort) | — |
+| `tests/unit/test_validation.py` | Already exists (T-005) | 307 lines, 11 ACs (spec + config validation) | — |
+| `src/forge/generation/stages/__init__.py` | **CREATE (T-006)** | Subpackage init; re-exports GenerationStage + all 6 stage classes; must include infrastructure import | — |
+| `src/forge/generation/stages/base.py` | **CREATE (T-006 — TEST-FIRST)** | `GenerationStage` protocol/ABC; `run(spec, output_dir, txn, progress)` | `ProjectSpec`, `ProgressReporter`, `GenerationTransaction` |
+| `src/forge/generation/stages/directory_initializer.py` | **CREATE (T-006 — TEST-FIRST)** | Validates output_dir; raises DirectoryNotEmptyError if non-empty | `ProjectSpec`, `DirectoryNotEmptyError`, `ProgressReporter`, `GenerationTransaction` |
+| `src/forge/generation/stages/shared_structure_scaffolder.py` | **CREATE (T-006 — TEST-FIRST)** | Shared files: README.md, .gitignore, .env.example, .python-version, docs/ stub | `ProjectSpec`, `ProgressReporter`, `GenerationTransaction` |
+| `src/forge/generation/stages/plugin_execution_engine.py` | **CREATE (T-006 — TEST-FIRST)** | Resolves plugin order (topological_sort), checks missing deps, executes plugins via isinstance() mixin checks, handles cancellation | `ProjectSpec`, `PluginRegistry`, `PluginBase`, `FileProvider`, `CommandRunner`, `DependencyProvider`, `ProgressReporter`, `GenerationTransaction`, `MissingDependencyError`, `CycleDependencyError` |
+| `src/forge/generation/stages/justfile_generator.py` | **CREATE (T-006 — TEST-FIRST)** | Framework-aware justfile with setup/dev/test/lint/format/build | `ProjectSpec`, `ProgressReporter`, `GenerationTransaction` |
+| `src/forge/generation/stages/project_documentation_writer.py` | **CREATE (T-006 — TEST-FIRST)** | AGENTS.md + .claude/CLAUDE.md | `ProjectSpec`, `ProgressReporter`, `GenerationTransaction` |
+| `src/forge/generation/stages/agent_skill_scaffolder.py` | **CREATE (T-006 — TEST-FIRST)** | .opencode/skills/, .opencode/agents/, .opencode/handoffs/ stubs | `ProjectSpec`, `ProgressReporter`, `GenerationTransaction` |
+| `tests/unit/test_stages.py` | **Already exists (T-016 test-first)** | 638 lines, 14 ACs, 6 test classes — contract-locks all stage APIs | — |
+| `src/forge/generation/orchestrator.py` | Pending (T-007) | — | `TemplateDefinition`, `Question`, `ProjectSpec`, `DurationEstimate` |
 
 ### Infrastructure Layer (T-003 creates __init__.py → T-004 replaces placeholder + creates transaction.py)
 | File | Status | Action | Depends on |
@@ -335,3 +380,14 @@ DurationEstimate(estimated_seconds, has_slow_steps, slow_step_details)
 | **AC-8 AST scanner requires `forge.infrastructure` import in every generation/ file** — test iterates all `.py` files in `generation/` and fails if any lacks a `from forge.infrastructure import ...` statement. Both `progress.py` and `__init__.py` must contain it. | T-003 | **High** — creates cross-layer ordering dependency (T-003 must create `infrastructure/__init__.py` before T-004) |
 | `should_cancel()` return value contract — `MockProgressReporter` defaults to `False`; `StdoutProgressReporter` behavior unspecified. Downstream (`T-013 QtProgressReporter`) may need thread-safe cancellation signal. | T-003 | Low — clean interface now, future-proofing needed |
 | `test_progress.py` already exists (169 lines, 9 AC classes) — implementation must match exact method signatures, return types, and export names. Any mismatch causes test failures. | T-003 | Low — well-documented by the test itself |
+| **AC-8 AST scanner applies to all 8 new stages/ files** — every `.py` in `stages/` must include `from forge.infrastructure import GenerationTransaction as _  # noqa: F401` or T-003's `test_progress.py:TestAC8` fails. **8 files, 1 chance to miss.** | T-006→T-003 | **High** — cross-ticket test coupling; forgetting the import in even one file breaks an unrelated test |
+| **PluginExecutionEngine — multi-mixin isinstance dispatch** — must simultaneously handle 3 mixin capabilities (FileProvider, CommandRunner, DependencyProvider) via isinstance checks, route each to correct GenerationTransaction method, and check missing deps + cancellation between plugins. Most architecturally complex stage. | T-006 | **High** — multi-dimensional coupling across T-002, T-003, T-004, T-005 |
+| **`output_dir` vs `target_dir` pass-through** — AC-5 requires `target_dir = output_dir`. An implementation that passes `txn.staging` instead silently breaks the CommandRunner contract. | T-006 | Medium — easy to get wrong given the staging abstraction |
+| **Cancellation check timing** — AC-13 checks `progress.should_cancel()` before executing each plugin. The `_CancellableReporter` in tests hardcodes `cancel_after=N`. Check must happen at the right point in the loop (before each plugin iteration). | T-006 | Medium — off-by-one in cancel timing fails tests |
+| **MissingDependencyError message contract** — AC-6 asserts `"missing-plugin" in str(exc.value)`. Error message must include the missing plugin ID for test to pass. | T-006 | Low — trivial but easy to forget when wrapping the registry call |
+| **CycleDependencyError must propagate, not catch** — AC-11 tests that `topological_sort` raising `CycleDependencyError` is not caught by the engine. Must use bare `registry.topological_sort()` with no try/except. | T-006 | Low — natural flow, but any defensive try/except would break tests |
+| **Empty plugin list → no-op** — AC-7 integration: zero plugins selected → Stage 3 must be skipped. Implementation must check `if not plugin_ids: return` before any registry calls. | T-006 | Low — well-scoped edge case |
+| **Test-first coupling (638 lines)** — `test_stages.py` defines exact import paths, class names, run() signatures, error types. Any deviation causes immediate test failure. Same pattern as T-002/T-005. | T-006 | **High** — tests are the spec; 14 ACs across 6 test classes, 638 lines |
+| **`__init__.py` export hygiene** — `generation/__init__.py` must re-export all new stage classes + GenerationStage protocol. Missing any breaks downstream (T-007) imports. | T-006 | Low — standard boilerplate, one-time task |
+| **Framework-awareness ambiguity** — ticket says "framework-aware justfile" and "stubs based on selected frameworks" for AgentSkillScaffolder, but tests only verify generic existence, not framework-specific content. Risk of over-engineering or under-delivering. | T-006 | Low — implement minimally to pass tests |
+| `GenerationStage` protocol base class signature — must match `run(spec, output_dir, txn, progress)` exactly. | T-006 | Low — single source of truth for downstream stages |
