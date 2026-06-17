@@ -126,7 +126,7 @@ class TestAC8_NoCrossLayerImports:
     def _generation_source_files(self) -> list[pathlib.Path]:
         here = pathlib.Path(__file__).resolve().parent.parent.parent
         gen_dir = here / "src" / "forge" / "generation"
-        files = sorted(gen_dir.glob("*.py"))
+        files = sorted(gen_dir.rglob("*.py"))
         assert files, (
             f"No source files found in {gen_dir}. "
             f"Expected at least progress.py and __init__.py."

@@ -230,27 +230,31 @@ class DurationEstimate:
 ```
 Orchestrator.generate(spec, output_dir, progress: ProgressReporter)
     │
+    ├── [Orchestrator] output_dir.mkdir(parents=True, exist_ok=True)
+    │       If output_dir already exists and is non-empty, the orchestrator
+    │       prompts the user. Stage 1 is the sole enforcement gate.
+    │
     ├── Stage 1: DirectoryInitializer
-    │       output_dir.mkdir(parents=True, exist_ok=True)
+    │       Validates output_dir; raises DirectoryNotEmptyError if non-empty.
     │
     ├── Stage 2: SharedStructureScaffolder
-    │       docs/, AGENTS.md, .gitignore, README.md, .claude/, tests/, scripts/
+    │       README.md, .gitignore, .env.example, .python-version, docs/ stubs
     │
     ├── Stage 3: PluginExecutionEngine (topo-sorted)
     │       For each plugin (by dependency order):
     │           Check capabilities (isinstance mixins)
-    │           If FileProvider: write files + create directories
-    │           If DependencyProvider: install packages
-    │           If CommandRunner: run scaffold commands
+    │           If FileProvider: write files + create directories via txn
+    │           If DependencyProvider: append to txn.requirements
+    │           If CommandRunner: run scaffold commands, register checkpoints
     │
     ├── Stage 4: JustfileGenerator
     │       Serializes ProjectSpec → Justfile
     │
     ├── Stage 5: ProjectDocumentationWriter
-    │       AGENTS.md + CLAUDE.md for the generated project
+    │       AGENTS.md + .claude/CLAUDE.md for the generated project
     │
     └── Stage 6: AgentSkillScaffolder
-            .claude/agents/ + .claude/skills/ + .claude/handoffs/ stubs
+            .opencode/agents/ + .opencode/skills/ + .opencode/handoffs/ stubs
 ```
 
 Each stage implements:
@@ -258,7 +262,7 @@ Each stage implements:
 ```python
 class GenerationStage(ABC):
     name: str
-    def run(self, spec: ProjectSpec, output_dir: Path, progress: ProgressReporter) -> None: ...
+    def run(self, spec: ProjectSpec, output_dir: Path, txn: GenerationTransaction, progress: ProgressReporter) -> None: ...
 ```
 
 ## Cross-Cutting Concerns
