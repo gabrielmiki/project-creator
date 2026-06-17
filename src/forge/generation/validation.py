@@ -31,11 +31,10 @@ class ValidationEngine:
             ))
 
         tpl = spec.template
-        if not tpl.id or not tpl.display_name or not tpl.backend_id:
+        if not tpl.id or not tpl.display_name:
             errors.append(ValidationError(
                 field="template",
-                message="Template must have non-empty id, display_name, "
-                        "and backend_id",
+                message="Template must have non-empty id and display_name",
                 severity="error",
             ))
 
@@ -63,7 +62,7 @@ class ValidationEngine:
             errors.append(ValidationError(
                 field="domains",
                 message="At least one domain must be specified",
-                severity="error",
+                severity="warning",
             ))
 
         return errors

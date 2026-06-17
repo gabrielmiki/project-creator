@@ -16,7 +16,6 @@ from forge.plugins.base import (
 
 
 class TestAC1_FileProviderMixin:
-
     def test_file_only_plugin_instantiates(self) -> None:
         class FileOnlyPlugin(PluginBase, FileProvider):
             name = "file-only"
@@ -80,7 +79,6 @@ class TestAC1_FileProviderMixin:
 
 
 class TestAC2_IsInstanceUninherited:
-
     def test_not_instance_of_command_runner(self) -> None:
         class NoCommandPlugin(PluginBase, FileProvider):
             name = "no-command"
@@ -137,7 +135,6 @@ class TestAC2_IsInstanceUninherited:
 
 
 class TestAC3_PluginBaseAbstract:
-
     def test_cannot_instantiate_plugin_base_directly(self) -> None:
         with pytest.raises(TypeError):
             PluginBase()  # type: ignore[abstract]
@@ -177,8 +174,7 @@ class TestAC4_NoCrossLayerImports:
         plugins_dir = here / "src" / "forge" / "plugins"
         files = sorted(plugins_dir.glob("*.py"))
         assert files, (
-            f"No source files found in {plugins_dir}. "
-            f"Expected at least base.py and __init__.py."
+            f"No source files found in {plugins_dir}. Expected at least base.py and __init__.py."
         )
         return files
 

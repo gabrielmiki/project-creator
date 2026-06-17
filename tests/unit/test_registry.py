@@ -16,13 +16,17 @@ from forge.plugins.base import PluginBase
 
 # ── Mock plugin classes for discovery, resolution, and topological sort ──
 
+
 class MockA(PluginBase):
     name = "a"
     display_name = "A"
     description = "Plugin A"
 
-    def files(self, spec: ProjectSpec) -> list: return []
-    def directories(self, spec: ProjectSpec) -> list: return []
+    def files(self, spec: ProjectSpec) -> list:
+        return []
+
+    def directories(self, spec: ProjectSpec) -> list:
+        return []
 
 
 class MockB(PluginBase):
@@ -30,8 +34,11 @@ class MockB(PluginBase):
     display_name = "B"
     description = "Plugin B"
 
-    def files(self, spec: ProjectSpec) -> list: return []
-    def directories(self, spec: ProjectSpec) -> list: return []
+    def files(self, spec: ProjectSpec) -> list:
+        return []
+
+    def directories(self, spec: ProjectSpec) -> list:
+        return []
 
 
 class MockARequiresB(PluginBase):
@@ -40,8 +47,11 @@ class MockARequiresB(PluginBase):
     description = "A requires B"
     requires = ["b"]
 
-    def files(self, spec: ProjectSpec) -> list: return []
-    def directories(self, spec: ProjectSpec) -> list: return []
+    def files(self, spec: ProjectSpec) -> list:
+        return []
+
+    def directories(self, spec: ProjectSpec) -> list:
+        return []
 
 
 class MockRunAfterB(PluginBase):
@@ -50,8 +60,11 @@ class MockRunAfterB(PluginBase):
     description = "A prefers B first"
     run_after = ["b"]
 
-    def files(self, spec: ProjectSpec) -> list: return []
-    def directories(self, spec: ProjectSpec) -> list: return []
+    def files(self, spec: ProjectSpec) -> list:
+        return []
+
+    def directories(self, spec: ProjectSpec) -> list:
+        return []
 
 
 class MockCycleA(PluginBase):
@@ -60,8 +73,11 @@ class MockCycleA(PluginBase):
     description = ""
     requires = ["cycle-b"]
 
-    def files(self, spec: ProjectSpec) -> list: return []
-    def directories(self, spec: ProjectSpec) -> list: return []
+    def files(self, spec: ProjectSpec) -> list:
+        return []
+
+    def directories(self, spec: ProjectSpec) -> list:
+        return []
 
 
 class MockCycleB(PluginBase):
@@ -70,8 +86,11 @@ class MockCycleB(PluginBase):
     description = ""
     requires = ["cycle-a"]
 
-    def files(self, spec: ProjectSpec) -> list: return []
-    def directories(self, spec: ProjectSpec) -> list: return []
+    def files(self, spec: ProjectSpec) -> list:
+        return []
+
+    def directories(self, spec: ProjectSpec) -> list:
+        return []
 
 
 class MockMissingDep(PluginBase):
@@ -80,8 +99,11 @@ class MockMissingDep(PluginBase):
     description = ""
     requires = ["c"]
 
-    def files(self, spec: ProjectSpec) -> list: return []
-    def directories(self, spec: ProjectSpec) -> list: return []
+    def files(self, spec: ProjectSpec) -> list:
+        return []
+
+    def directories(self, spec: ProjectSpec) -> list:
+        return []
 
 
 def _make_entry_point(name: str, plugin_cls: type[PluginBase]) -> MagicMock:
@@ -105,6 +127,7 @@ plugin = _UserPlugin()
 
 
 # ── Fixtures ──
+
 
 @pytest.fixture
 def empty_registry():
@@ -182,8 +205,8 @@ def registry_with_missing_dep():
 
 # ── Constructor (AC-1, AC-2) ──
 
-class TestAC1_2_Constructor:
 
+class TestAC1_2_Constructor:
     def test_default_strict_false(self) -> None:
         reg = PluginRegistry()
         assert reg.strict is False
@@ -195,8 +218,8 @@ class TestAC1_2_Constructor:
 
 # ── Discovery (AC-3, AC-4, AC-5, AC-6) ──
 
-class TestAC3_6_Discovery:
 
+class TestAC3_6_Discovery:
     def test_entry_point_discovery(self) -> None:
         mock_a = MockA()
         with patch("importlib.metadata.entry_points") as mock_ep:
@@ -219,7 +242,9 @@ class TestAC3_6_Discovery:
         assert discovered["a"].name == "a"
 
     def test_conflict_entry_point_wins_and_warning_logged(
-        self, tmp_path: Path, caplog: pytest.LogCaptureFixture,
+        self,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         caplog.set_level(logging.WARNING)
         plugins_dir = tmp_path / ".plugins"
@@ -243,7 +268,8 @@ class TestAC3_6_Discovery:
         assert any("myplugin" in r.message for r in warning_records)
 
     def test_strict_mode_raises_discovery_error_on_conflict(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         plugins_dir = tmp_path / ".plugins"
         plugins_dir.mkdir()
@@ -267,8 +293,8 @@ class TestAC3_6_Discovery:
 
 # ── Resolution (AC-7, AC-8, AC-9, AC-10, AC-11) ──
 
-class TestAC7_11_Resolution:
 
+class TestAC7_11_Resolution:
     def test_resolve_existing(self, registry_with_a_and_b: PluginRegistry) -> None:
         plugin = registry_with_a_and_b.resolve("a")
         assert plugin.name == "a"
@@ -284,7 +310,9 @@ class TestAC7_11_Resolution:
         assert plugins[0].name == "a"
         assert plugins[1].name == "b"
 
-    def test_resolve_many_partial_raises_key_error(self, registry_with_a_and_b: PluginRegistry) -> None:
+    def test_resolve_many_partial_raises_key_error(
+        self, registry_with_a_and_b: PluginRegistry
+    ) -> None:
         with pytest.raises(KeyError):
             registry_with_a_and_b.resolve_many(["a", "unknown"])
 
@@ -294,8 +322,8 @@ class TestAC7_11_Resolution:
 
 # ── .plugins/ Discovery (AC-12) ──
 
-class TestAC12_DotPluginsDiscovery:
 
+class TestAC12_DotPluginsDiscovery:
     def test_discovers_plugin_from_dot_plugins_dir(self, tmp_path: Path) -> None:
         plugins_dir = tmp_path / ".plugins"
         plugins_dir.mkdir()
@@ -315,9 +343,7 @@ class TestAC12_DotPluginsDiscovery:
     def test_dot_plugins_file_without_plugin_attr_skipped(self, tmp_path: Path) -> None:
         plugins_dir = tmp_path / ".plugins"
         plugins_dir.mkdir()
-        (plugins_dir / "invalid.py").write_text(
-            "# no plugin attribute\nx = 1\n"
-        )
+        (plugins_dir / "invalid.py").write_text("# no plugin attribute\nx = 1\n")
 
         with (
             patch("importlib.metadata.entry_points", return_value=[]),
@@ -332,8 +358,8 @@ class TestAC12_DotPluginsDiscovery:
 
 # ── Available Plugins (AC-13, AC-14) ──
 
-class TestAC13_14_Available:
 
+class TestAC13_14_Available:
     def test_get_available_backends(self, registry_with_a_and_b: PluginRegistry) -> None:
         backends = registry_with_a_and_b.get_available_backends()
         assert len(backends) == 2
@@ -345,22 +371,25 @@ class TestAC13_14_Available:
 
 # ── Missing Dependencies (AC-15, AC-16, AC-17) ──
 
-class TestAC15_17_MissingDeps:
 
+class TestAC15_17_MissingDeps:
     def test_all_deps_resolved_returns_empty_list(
-        self, registry_with_deps: PluginRegistry,
+        self,
+        registry_with_deps: PluginRegistry,
     ) -> None:
         missing = registry_with_deps.get_missing_dependencies("a")
         assert missing == []
 
     def test_unresolved_dep_in_list(
-        self, registry_with_missing_dep: PluginRegistry,
+        self,
+        registry_with_missing_dep: PluginRegistry,
     ) -> None:
         missing = registry_with_missing_dep.get_missing_dependencies("needs-c")
         assert "c" in missing
 
     def test_unknown_plugin_id_raises_key_error(
-        self, registry_with_a_and_b: PluginRegistry,
+        self,
+        registry_with_a_and_b: PluginRegistry,
     ) -> None:
         with pytest.raises(KeyError):
             registry_with_a_and_b.get_missing_dependencies("unknown")
@@ -368,17 +397,19 @@ class TestAC15_17_MissingDeps:
 
 # ── Topological Sort (AC-18 through AC-23) ──
 
-class TestAC18_23_TopologicalSort:
 
+class TestAC18_23_TopologicalSort:
     def test_dependency_before_dependent(
-        self, registry_with_deps: PluginRegistry,
+        self,
+        registry_with_deps: PluginRegistry,
     ) -> None:
         result = registry_with_deps.topological_sort(["a", "b"])
         ids = [p.name for p in result]
         assert ids.index("b") < ids.index("a")
 
     def test_cycle_detection_raises_cycle_dependency_error(
-        self, registry_with_cycle: PluginRegistry,
+        self,
+        registry_with_cycle: PluginRegistry,
     ) -> None:
         with pytest.raises(CycleDependencyError) as exc:
             registry_with_cycle.topological_sort(["cycle-a", "cycle-b"])
@@ -386,7 +417,8 @@ class TestAC18_23_TopologicalSort:
         assert "cycle-b" in str(exc.value)
 
     def test_single_plugin_unchanged(
-        self, registry_with_a_and_b: PluginRegistry,
+        self,
+        registry_with_a_and_b: PluginRegistry,
     ) -> None:
         result = registry_with_a_and_b.topological_sort(["a"])
         assert len(result) == 1
@@ -396,14 +428,16 @@ class TestAC18_23_TopologicalSort:
         assert registry_with_a_and_b.topological_sort([]) == []
 
     def test_stable_sort_preserves_input_order(
-        self, registry_with_a_and_b: PluginRegistry,
+        self,
+        registry_with_a_and_b: PluginRegistry,
     ) -> None:
         result = registry_with_a_and_b.topological_sort(["b", "a"])
         assert result[0].name == "b"
         assert result[1].name == "a"
 
     def test_run_after_creates_soft_edge(
-        self, registry_with_run_after: PluginRegistry,
+        self,
+        registry_with_run_after: PluginRegistry,
     ) -> None:
         result = registry_with_run_after.topological_sort(["a", "b"])
         ids = [p.name for p in result]

@@ -339,9 +339,9 @@ The `ProgressReporter` protocol keeps the orchestrator framework-agnostic. The Q
 
 The wizard has 5 linear screens with no side navigation:
 
-1. **Template Selection** — Choose from predefined stack combinations (queries `Orchestrator.get_available_templates()` facade)
+1. **Template Selection** — Choose from predefined stack combinations (queries `Orchestrator.get_available_backends()` / `get_available_frontends()` facade)
 2. **Domain Definition** — Tag editor for project domains (auth, users, payments)
-3. **Stack Config** — Dynamic form rendered from plugin questions (queries `Orchestrator.get_questions(template_id)` facade)
+3. **Stack Config** — Dynamic form rendered from plugin questions (queries `Orchestrator.get_domain_questions(backend_id, frontend_id)` facade)
 4. **Review Summary** — Tree view of what will be generated
 5. **Generation** — Progress bar + status log (via `ProgressReporter`), then "Open Project" / "Close"
 

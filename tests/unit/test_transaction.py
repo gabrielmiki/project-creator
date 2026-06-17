@@ -122,9 +122,7 @@ class TestAC9_ContextManagerException:
 
 
 class TestAC10_CommitCollision:
-    def test_raises_file_exists_error_and_preserves_staging(
-        self, output_dir: Path, txn
-    ) -> None:
+    def test_raises_file_exists_error_and_preserves_staging(self, output_dir: Path, txn) -> None:
         (output_dir / "collide.txt").write_text("original")
         txn.stage_file("collide.txt", "new")
         with pytest.raises(FileExistsError):

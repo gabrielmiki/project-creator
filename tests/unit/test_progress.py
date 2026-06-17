@@ -14,9 +14,9 @@ from forge.generation.progress import (
 
 
 class TestAC1_StdoutReporter:
-
     def test_stdout_contains_stage_name_and_step_messages_in_order(
-        self, capsys: pytest.CaptureFixture[str],
+        self,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         reporter = StdoutProgressReporter()
         reporter.on_stage_start("DirectoryInitializer", 3)
@@ -28,7 +28,6 @@ class TestAC1_StdoutReporter:
 
 
 class TestAC2_MockReporterCalls:
-
     def test_calls_tracked_in_order(self) -> None:
         reporter = MockProgressReporter()
         reporter.on_stage_start("init", 1)
@@ -44,7 +43,6 @@ class TestAC2_MockReporterCalls:
 
 
 class TestAC3_ProtocolIsInstance:
-
     def test_isinstance_returns_true_for_stdout_reporter(self) -> None:
         assert isinstance(StdoutProgressReporter(), ProgressReporter)
 
@@ -57,7 +55,6 @@ class TestAC3_ProtocolIsInstance:
 
 
 class TestAC4_ErrorTracking:
-
     def test_errors_tracked_with_recoverable_flag(self) -> None:
         reporter = MockProgressReporter()
         reporter.on_error(ValueError("config err"), True)
@@ -74,7 +71,6 @@ class TestAC4_ErrorTracking:
 
 
 class TestAC5_LogLevels:
-
     def test_warning_level_shows_prefix(self, capsys: pytest.CaptureFixture[str]) -> None:
         reporter = StdoutProgressReporter()
         reporter.on_log("message", "warning")
@@ -83,7 +79,8 @@ class TestAC5_LogLevels:
         assert "message" in captured.out
 
     def test_default_info_level_shows_prefix(
-        self, capsys: pytest.CaptureFixture[str],
+        self,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         reporter = StdoutProgressReporter()
         reporter.on_log("info message")
@@ -93,10 +90,11 @@ class TestAC5_LogLevels:
 
 
 class TestAC6_DurationEstimate:
-
     def test_duration_estimate_tracked_in_calls(self) -> None:
         reporter = MockProgressReporter()
-        de = DurationEstimate(estimated_seconds=30, has_slow_steps=True, slow_step_details=["npm install"])
+        de = DurationEstimate(
+            estimated_seconds=30, has_slow_steps=True, slow_step_details=["npm install"]
+        )
         reporter.on_duration_estimate(de)
         assert len(reporter.calls) == 1
         assert reporter.calls[0][0] == "on_duration_estimate"
@@ -110,9 +108,9 @@ class TestAC6_DurationEstimate:
 
 
 class TestAC7_EmptyInputs:
-
     def test_no_crash_on_empty_stage_name_and_zero_steps(
-        self, capsys: pytest.CaptureFixture[str],
+        self,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         reporter = StdoutProgressReporter()
         reporter.on_stage_start("", 0)
@@ -128,8 +126,7 @@ class TestAC8_NoCrossLayerImports:
         gen_dir = here / "src" / "forge" / "generation"
         files = sorted(gen_dir.rglob("*.py"))
         assert files, (
-            f"No source files found in {gen_dir}. "
-            f"Expected at least progress.py and __init__.py."
+            f"No source files found in {gen_dir}. Expected at least progress.py and __init__.py."
         )
         return files
 
@@ -164,7 +161,6 @@ class TestAC8_NoCrossLayerImports:
 
 
 class TestAC9_ShouldCancel:
-
     def test_should_cancel_returns_false_by_default(self) -> None:
         reporter = MockProgressReporter()
         assert reporter.should_cancel() is False

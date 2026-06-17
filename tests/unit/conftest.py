@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -12,6 +13,43 @@ from forge.plugins.base import (
     FileProvider,
     PluginBase,
 )
+from tests.unit._shared import (
+    MockTransaction,
+    make_empty_spec,
+    make_spec,
+)
+
+# ── Shared Fixtures ─────────────────────────────────────────────────
+
+
+@pytest.fixture
+def output_dir(tmp_path: Path) -> Path:
+    return tmp_path / "output"
+
+
+@pytest.fixture
+def txn() -> MockTransaction:
+    return MockTransaction()
+
+
+@pytest.fixture
+def progress() -> MagicMock:
+    p: MagicMock = MagicMock()
+    p.should_cancel.return_value = False
+    return p
+
+
+@pytest.fixture
+def spec() -> ProjectSpec:
+    return make_spec(backend_id="")
+
+
+@pytest.fixture
+def empty_spec() -> ProjectSpec:
+    return make_empty_spec()
+
+
+# ── Conftest Plugin Classes (pre-existing) ──────────────────────────
 
 
 class FileOnlyPlugin(PluginBase, FileProvider):
