@@ -265,8 +265,8 @@ class TestPluginExecutionEngine:
         plugin.name = "cp"
         original_generate = plugin.generate
 
-        def patched_generate(spec: ProjectSpec, target_dir: Path) -> None:
-            original_generate(spec, target_dir)
+        def patched_generate(spec: ProjectSpec, target_dir: Path, executor: object) -> None:
+            original_generate(spec, target_dir, executor)
             txn.add_checkpoint(checkpoint_paths)
 
         plugin.generate = patched_generate  # type: ignore[assignment]

@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from forge.domain import GeneratedFile, ProjectSpec, Question
+from forge.infrastructure import ProcessExecutor
 from forge.plugins.base import (
     CommandRunner,
     Configurable,
@@ -78,7 +79,7 @@ class CommandOnlyPlugin(PluginBase, CommandRunner):
     display_name = "Command Only"
     description = "A plugin that only runs commands"
 
-    def generate(self, spec: ProjectSpec, target_dir: Path) -> None:
+    def generate(self, spec: ProjectSpec, target_dir: Path, executor: ProcessExecutor) -> None:
         pass
 
 
@@ -87,7 +88,7 @@ class DependencyOnlyPlugin(PluginBase, DependencyProvider):
     display_name = "Dependency Only"
     description = "A plugin that only provides dependencies"
 
-    def dependencies(self) -> list[str]:
+    def dependencies(self, spec: ProjectSpec) -> list[str]:
         return []
 
 
@@ -105,10 +106,10 @@ class FullPlugin(PluginBase, Configurable, FileProvider, CommandRunner, Dependen
     def directories(self, spec: ProjectSpec) -> list[str]:
         return []
 
-    def generate(self, spec: ProjectSpec, target_dir: Path) -> None:
+    def generate(self, spec: ProjectSpec, target_dir: Path, executor: ProcessExecutor) -> None:
         pass
 
-    def dependencies(self) -> list[str]:
+    def dependencies(self, spec: ProjectSpec) -> list[str]:
         return []
 
 

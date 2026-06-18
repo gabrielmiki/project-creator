@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from forge.domain import Domain, GeneratedFile, ProjectSpec, TemplateDefinition
+from forge.infrastructure import ProcessExecutor
 from forge.plugins.base import (
     CommandRunner,
     DependencyProvider,
@@ -63,7 +64,7 @@ class MockCommandPlugin(PluginBase, CommandRunner):
         self._generate_target_dir: Path | None = None
         self._generate_spec: ProjectSpec | None = None
 
-    def generate(self, spec: ProjectSpec, target_dir: Path) -> None:
+    def generate(self, spec: ProjectSpec, target_dir: Path, executor: ProcessExecutor) -> None:
         self._generate_called = True
         self._generate_target_dir = target_dir
         self._generate_spec = spec
@@ -78,7 +79,7 @@ class MockDepPlugin(PluginBase, DependencyProvider):
         super().__init__()
         self._deps = deps or []
 
-    def dependencies(self) -> list[str]:
+    def dependencies(self, spec: ProjectSpec) -> list[str]:
         return self._deps
 
 

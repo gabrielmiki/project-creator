@@ -1,0 +1,346 @@
+{
+  "ac_validation": [
+    {
+      "criterion": "AC-1",
+      "text": "Given the FastapiPlugin class, when instantiated, then plugin.name returns 'fastapi'.",
+      "testable": true,
+      "issues": [
+        "Tests the class attribute `name = 'fastapi'` directly. The PluginRegistry uses the entry point name as the canonical ID (T-005 handoff: 'Entry point name overrides plugin class\\'s name attribute'). AC-1 only verifies the class attribute, not that the registry resolves with ID 'fastapi'. These must remain consistent.",
+        "For robustness, consider also testing that `registry.resolve('fastapi')` returns the plugin."
+      ],
+      "suggested_fix": "Add a secondary assertion: Given a PluginRegistry, when resolve('fastapi') is called, then it returns the FastapiPlugin instance."
+    },
+    {
+      "criterion": "AC-2a",
+      "text": "Given a valid ProjectSpec with backend_id='fastapi' and default config, when files() is called, then the returned list at minimum contains GeneratedFile entries for app/__init__.py, app/main.py, and requirements.txt.",
+      "testable": true,
+      "issues": [
+        "'at minimum' is slightly ambiguous — the test should assert exact set membership for these 3 paths, not minimum cardinality.",
+        "'default config' is defined by AC-11 as config={\"fastapi\": {}} (empty dict), implying defaults of orm='sqlalchemy', auth=False, include_alembic=False.",
+        "Test must construct a ProjectSpec manually since make_spec() creates config={} with no fastapi key."
+      ],
+      "suggested_fix": "Minor tightening: replace 'at minimum contains' with 'contains GeneratedFile entries for' to make the assertion type unambiguous."
+    },
+    {
+      "criterion": "AC-2b",
+      "text": "Given a valid ProjectSpec with backend_id='fastapi', when PluginExecutionEngine.run() is called with a MockTransaction, then files are staged via txn.stage_file() for the core files listed in AC-2a, and dependencies are appended to txn.requirements.",
+      "testable": true,
+      "issues": [
+        "Combines FileProvider AND DependencyProvider in one AC. Cleaner to split: 2b_i tests FileProvider staging, 2b_ii tests DependencyProvider appending.",
+        "The PluginExecutionEngine dispatch order (line 48-60: FileProvider first, then DependencyProvider) is not asserted — only the final state is checked. This is fine for pass/fail."
+      ],
+      "suggested_fix": "Consider splitting into 2b_i (stage_file assertions) and 2b_ii (requirements assertions) for failure clarity."
+    },
+    {
+      "criterion": "AC-3",
+      "text": "Given the plugin's Configurable mixin, when questions() is called, then it returns Question objects whose .key attributes include 'orm', 'auth', 'include_alembic'. The orm question must be QuestionType.CHOICE with options containing ['sqlalchemy', 'none']; auth and include_alembic must be QuestionType.BOOLEAN.",
+      "testable": true,
+      "issues": [
+        "Well-specified with concrete types and options. The test can assert on each question's key, type, and options independently."
+      ],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-4",
+      "text": "Given orm='sqlalchemy' in the plugin's config (accessed via spec.config.get('fastapi', {})), when files() is called, then the generated requirements.txt content includes sqlalchemy.",
+      "testable": true,
+      "issues": [
+        "The parenthetical '(accessed via spec.config.get(\"fastapi\", {}))' prescribes implementation pattern, not just behavior. The test only asserts the content, not how config is accessed.",
+        "Test needs spec with config={\"fastapi\": {\"orm\": \"sqlalchemy\"}}. make_spec() produces config={}, requiring custom ProjectSpec construction."
+      ],
+      "suggested_fix": "Move the config access pattern note to Design Notes (already covered by DN1). Keep AC text focused on behavior only."
+    },
+    {
+      "criterion": "AC-5",
+      "text": "Given include_alembic=True in config, when directories() is called, then 'alembic/' is in the returned list.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-6",
+      "text": "Given the FastAPI plugin, when dependencies() is called, then it returns ['fastapi>=0.115', 'uvicorn[standard]>=0.34'].",
+      "testable": true,
+      "issues": [
+        "No spec parameter needed — dependencies(self) is sufficient for the base case.",
+        "BUT: AC-13 and AC-15 require conditional dependencies based on auth config, which the current DependencyProvider interface cannot support (see AC-13 for full analysis). This AC-6 will need updating if the interface is changed to accept spec."
+      ],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-7",
+      "text": "Given a valid ProjectSpec and target directory, when generate() is called with a mock ProcessExecutor, then executor.run() is called with a command list containing ['uv', 'add', 'fastapi>=0.115', 'uvicorn[standard]>=0.34'].",
+      "testable": true,
+      "issues": [
+        "'containing' is slightly ambiguous (exact match vs subset). Given context, it should mean the command list argument is a superset of these elements.",
+        "The plugin's generate() must use untyped `executor` or `Any` to avoid the AC-4 scanner (Design Note 7). mypy compatibility: `Any` parameter overrides are compatible with typed abstract methods.",
+        "Mock ProcessExecutor = MagicMock(). executor.run() can be asserted via mock_calls."
+      ],
+      "suggested_fix": "Clarify to: 'executor.run() is called with a command list that includes exactly these elements (it may include additional arguments).'"
+    },
+    {
+      "criterion": "AC-8",
+      "text": "Given include_alembic=False in config, when directories() is called, then 'alembic/' is NOT in the returned list.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-9",
+      "text": "Given orm='none' in config, when files() is called, then the generated requirements.txt does NOT include 'sqlalchemy'.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-10",
+      "text": "Given an invalid orm value (e.g., 'invalid') in plugin config, when ValidationEngine.validate_plugin_config() is called with the plugin's questions (constructed inline per Design Note 8), then a ValidationError with severity 'error' is returned.",
+      "testable": true,
+      "issues": [
+        "Design Note 8 correctly references the existing pattern at test_validation.py:test_choice_invalid_option (lines 226-240).",
+        "AC explicitly says 'constructed inline' — avoids needing the plugin to exist at test time. Good test-first design.",
+        "The existing test pattern checks `len(errors) >= 1` and `any(e.field == key for e in errors)`. AC-10 additionally requires `severity == 'error'` — the existing pattern doesn't check severity but ValidationEngine.validate_plugin_config always emits 'error' for CHOICE violations."
+      ],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-11",
+      "text": "Given config={'fastapi': {}} (empty config dict — plugin uses internal defaults), when files() and directories() are called, then: (a) requirements.txt contains 'sqlalchemy', (b) 'alembic/' is NOT in the returned directories.",
+      "testable": true,
+      "issues": [
+        "Tests default behavior: orm defaults to 'sqlalchemy', include_alembic defaults to False.",
+        "Test must construct ProjectSpec with config={\"fastapi\": {}}. make_spec() provides config={} — test can reassign spec.config."
+      ],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-12",
+      "text": "Given config={} (no 'fastapi' key in ProjectSpec.config), when files() or directories() is called, then no exception is raised and default values are used (the plugin accesses config via spec.config.get('fastapi', {})).",
+      "testable": true,
+      "issues": [
+        "Directly validates that the plugin uses .get() rather than plugin_config() which raises KeyError (project_spec.py:34-36).",
+        "make_spec() produces config={} by default — compatible with this AC out of the box.",
+        "The parenthetical about .get() is implementation guidance, not a test assertion. The behavioral assertion (no exception + defaults) is what matters."
+      ],
+      "suggested_fix": "Consider moving the .get() guidance to Design Notes (already in DN1)."
+    },
+    {
+      "criterion": "AC-13",
+      "text": "Given auth=True in config, when dependencies() is called, then the returned list includes 'python-jose[cryptography]>=3.3' and 'passlib[bcrypt]>=1.7'.",
+      "testable": false,
+      "issues": [
+        "**BLOCKING**: DependencyProvider.dependencies() in base.py:49-51 has signature `def dependencies(self) -> list[str]:` — NO `spec` parameter. The plugin has no access to config at dependencies() call time.",
+        "PluginExecutionEngine line 57: txn.requirements.extend(plugin.dependencies()) — passes no arguments.",
+        "PluginRegistry instantiates plugins with `cls()` (no arguments) — plugin has no config at construction time.",
+        "This AC cannot be implemented unless: (a) DependencyProvider interface is changed to accept spec, (b) PluginExecutionEngine injects config onto the plugin before calling capabilities, or (c) the AC is removed and auth deps are always included.",
+        "This is a cross-cutting interface design gap between T-008 ACs and the existing T-002/T-006 infrastructure."
+      ],
+      "suggested_fix": "RESOLVE BEFORE IMPLEMENTATION. Options: (A) Change DependencyProvider.dependencies(self) to dependencies(self, spec: ProjectSpec) — updates base.py, _shared.py, conftest.py, plugin_execution_engine.py. (B) Have PluginExecutionEngine set plugin._config = spec.config.get(plugin.name, {}) before the capability loop. (C) Remove AC-13 and AC-15 and always include auth deps in the base dependencies(). Recommend Option A for architectural consistency."
+    },
+    {
+      "criterion": "AC-14",
+      "text": "Given auth=True in config, when files() is called, then GeneratedFile entries for app/middleware/auth.py and app/routes/auth.py are present.",
+      "testable": true,
+      "issues": [
+        "files(spec) receives the spec parameter — plugin has access to config via spec.config.get('fastapi', {}). No interface issue.",
+        "Requires spec with config={\"fastapi\": {\"auth\": True}}."
+      ],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-15",
+      "text": "Given auth=False (default) or auth key absent from config entirely, when dependencies() is called, then the returned list is the base set ['fastapi>=0.115', 'uvicorn[standard]>=0.34'] (no auth packages).",
+      "testable": false,
+      "issues": [
+        "**BLOCKING**: Same issue as AC-13. DependencyProvider.dependencies() has no access to config.",
+        "Even if the interface issue is resolved, this AC has an additional ambiguity: 'auth=False (default) or auth key absent' — these should produce the same result (no auth packages). The test should cover both cases as sub-assertions.",
+        "The 'or auth key absent' case is already covered by AC-12/AC-11 behavior (config.get('fastapi', {}) returns empty dict, .get('auth', False) returns False)."
+      ],
+      "suggested_fix": "Same resolution as AC-13. If Option A is chosen (dependencies(self, spec)), both AC-13 and AC-15 become testable. If Option C, AC-13 and AC-15 become redundant (auth deps always present)."
+    },
+    {
+      "criterion": "AC-16",
+      "text": "Given the FastapiPlugin class, when instantiated, then display_name returns 'FastAPI' and description returns a non-empty string.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-17",
+      "text": "Given the forge.plugins.fastapi package, when imported, then FastapiPlugin is importable from forge.plugins.fastapi.",
+      "testable": true,
+      "issues": [
+        "Under test-first, this test will fail with ModuleNotFoundError — the expected test-first gate behavior.",
+        "Design Note 4 requires fastapi/__init__.py to import from forge.domain to satisfy the AC-4 scanner's test_allowed_domain_imports_are_permitted check."
+      ],
+      "suggested_fix": null
+    }
+  ],
+  "architecture_readiness": [
+    {
+      "requirement": "PluginBase + mixins for FastapiPlugin",
+      "status": "EXISTS",
+      "location": "src/forge/plugins/base.py",
+      "notes": "All 4 mixins (Configurable, FileProvider, CommandRunner, DependencyProvider) defined. FastapiPlugin inherits all four — no architecture gaps."
+    },
+    {
+      "requirement": "CommandRunner.generate() executor injection",
+      "status": "EXISTS",
+      "location": "src/forge/plugins/base.py:44-46",
+      "notes": "CommandRunner.generate(self, spec, target_dir, executor) already accepts ProcessExecutor. The AC-4 scanner exempts base.py via INFRA_EXEMPT_FILES. FastapiPlugin must use untyped `executor` or `Any` to avoid AC-4 scanner flagging. Works with mypy: `Any` parameter overrides are compatible."
+    },
+    {
+      "requirement": "PluginExecutionEngine dispatch for all 4 mixins",
+      "status": "EXISTS",
+      "location": "src/forge/generation/stages/plugin_execution_engine.py:48-60",
+      "notes": "Dispatch order: FileProvider (files + directories) → DependencyProvider (dependencies) → CommandRunner (generate). Matches T-008 API Spec expectations. AC-2b tests FileProvider + DependencyProvider combined — dispatch order is not order-sensitive for final-state assertions."
+    },
+    {
+      "requirement": "DependencyProvider.dependencies() with conditional auth",
+      "status": "MISSING",
+      "location": "src/forge/plugins/base.py:49-51",
+      "notes": "**BLOCKING GAP**: Current interface `dependencies(self) -> list[str]` has no `spec` parameter. AC-13 and AC-15 require conditional return values based on `auth` config. The plugin has no access to config at dependencies() call time. Three resolutions possible: (A) add spec parameter to interface, (B) inject config onto plugin in PluginExecutionEngine, (C) remove conditional dependency ACs."
+    },
+    {
+      "requirement": "MockTransaction for plugin test assertions",
+      "status": "EXISTS",
+      "location": "tests/unit/_shared.py:16-34",
+      "notes": "MockTransaction.stage_file(), stage_directory(), and requirements list all available for AC-2b assertions. Pattern well-established from T-006/T-007 tests."
+    },
+    {
+      "requirement": "make_spec() factory for ProjectSpec construction",
+      "status": "EXISTS",
+      "location": "tests/unit/_shared.py:86-98",
+      "notes": "Produces config={} by default. Tests needing config={'fastapi': {...}} (AC-4, AC-11, AC-13, AC-14) must construct ProjectSpec manually or reassign spec.config. This is straightforward — not blocking."
+    },
+    {
+      "requirement": "Mock ProcessExecutor for AC-7",
+      "status": "EXISTS",
+      "location": "tests/unit/_shared.py:7 / tests/unit/conftest.py:9",
+      "notes": "ProcessExecutor imported in _shared.py and conftest.py (in test files, not plugins/ — AC-4 scanner doesn't apply). MagicMock can serve as mock executor. Pattern already demonstrated by MockCommandPlugin.generate() which accepts executor parameter."
+    },
+    {
+      "requirement": "ValidationEngine.validate_plugin_config() for AC-10",
+      "status": "EXISTS",
+      "location": "src/forge/generation/validation.py:80-157",
+      "notes": "Existing method validates CHOICE values (lines 148-157). AC-10 tests the exact use case. Existing test pattern at test_validation.py:test_choice_invalid_option (lines 226-240) proves the pattern. Design Note 8 confirms inline Question construction for test-first compatibility."
+    },
+    {
+      "requirement": "AC-4 scanner (forbidden imports check)",
+      "status": "EXISTS",
+      "location": "tests/unit/test_plugin_base.py:164-216",
+      "notes": "Scanner uses rglob('*.py') (fixed from glob in T-006 post-mortem). All plugins/ .py files must import from forge.domain. base.py exempt from infra import ban. FastapiPlugin must NOT import from forge.infrastructure — even under TYPE_CHECKING. Use untyped or Any for executor parameter."
+    },
+    {
+      "requirement": "Entry point registration for fastapi plugin",
+      "status": "EXISTS",
+      "location": "pyproject.toml:15",
+      "notes": "Already registered as `fastapi = 'forge.plugins.fastapi:FastapiPlugin'`. AC-1 class attribute `name = 'fastapi'` must match. T-005 handoff warns: entry point name overrides class attribute in Registry."
+    },
+    {
+      "requirement": "app.py headless validation loop",
+      "status": "EXISTS",
+      "location": "src/forge/app.py:77-87",
+      "notes": "Design Note 2 is accurate: app.py iterates configured plugins, calls validate_plugin_config(pid, spec.config.get(pid, {}), plugin.questions()). Uses spec.config.get(pid, {}) — consistent with DN1's spec.config.get('fastapi', {}) since pid == 'fastapi'."
+    },
+    {
+      "requirement": "Fixture scopes for resource-intensive operations",
+      "status": "EXISTS",
+      "location": "tests/unit/conftest.py",
+      "notes": "All fixtures use function scope (default). No resource-intensive operations in T-008 tests (plugin instantiation, question answering, file content generation are all fast). No fixture scope concerns."
+    }
+  ],
+  "coverage_analysis": {
+    "happy_path": "COVERED",
+    "error_cases": "COVERED",
+    "edge_cases": "PARTIALLY_COVERED",
+    "plugin_isolation_tested": "YES",
+    "details": {
+      "happy_path": [
+        "AC-1: plugin.name == 'fastapi'",
+        "AC-2a: core files present (app/__init__.py, app/main.py, requirements.txt)",
+        "AC-2b: files staged + deps appended via PluginExecutionEngine",
+        "AC-3: questions() returns correct keys, types, options",
+        "AC-4: orm=sqlalchemy → requirements.txt includes sqlalchemy",
+        "AC-5: include_alembic=True → alembic/ present",
+        "AC-6: base dependencies returned",
+        "AC-7: generate() calls executor.run() with uv add command",
+        "AC-14: auth=True → auth.py files present",
+        "AC-16: display_name and description correct",
+        "AC-17: FastapiPlugin importable from forge.plugins.fastapi"
+      ],
+      "error_cases": [
+        "AC-10: Invalid CHOICE value → ValidationError with severity='error'"
+      ],
+      "edge_cases": [
+        "AC-8: include_alembic=False → alembic/ absent",
+        "AC-9: orm='none' → sqlalchemy absent from requirements.txt",
+        "AC-11: empty config dict → internal defaults used",
+        "AC-12: no 'fastapi' key → no exception, defaults used"
+      ],
+      "gaps": [
+        "AC-13/AC-15: Conditional dependencies (auth=True/false) — cannot be tested without DependencyProvider interface change or alternative mechanism."
+      ]
+    }
+  },
+  "blocking_issues": [
+    {
+      "id": "BLOCKING-1",
+      "severity": "BLOCKING",
+      "area": "DependencyProvider interface vs AC-13/AC-15",
+      "description": "AC-13 and AC-15 require dependencies() to return conditional results based on auth config (auth=True adds auth packages, auth=False/absent omits them). However, DependencyProvider.dependencies() in base.py:49-51 has signature `def dependencies(self) -> list[str]:` — no `spec` parameter. The plugin has no access to the config at dependencies() call time because: (a) PluginRegistry instantiates plugins with `cls()` (no arguments), (b) PluginExecutionEngine calls `plugin.dependencies()` without passing spec (line 57), (c) PluginBase.__init__ stores no config. This is a cross-cutting interface design gap between T-008 ACs and the established T-002/T-006 infrastructure.",
+      "resolution_options": [
+        "Option A (Recommended): Change DependencyProvider.dependencies(self) -> list[str] to dependencies(self, spec: ProjectSpec) -> list[str]. Update base.py, plugin_execution_engine.py, _shared.py (MockDepPlugin), conftest.py (DependencyOnlyPlugin, FullPlugin), and all tests that call dependencies(). This is the architecturally cleanest fix.",
+        "Option B: Have PluginExecutionEngine set plugin._config = spec.config.get(plugin.name, {}) before the capability loop. Less invasive but couples plugin interface to internal attribute convention.",
+        "Option C: Remove AC-13 and AC-15. Include auth deps (python-jose, passlib) unconditionally in dependencies(). Simplest but wastes pip install time when auth=False."
+      ],
+      "impact": "If unresolved, AC-13 and AC-15 cannot be implemented. At most 15/17 ACs are implementable."
+    }
+  ],
+  "non_blocking_issues": [
+    {
+      "id": "NB-1",
+      "severity": "LOW",
+      "area": "AC-1 naming consistency",
+      "description": "AC-1 tests the class attribute `name = 'fastapi'`. However, the T-005 handoff documents that PluginRegistry uses the entry point name (pyproject.toml:15 `fastapi = ...`) as the canonical ID, NOT the class attribute. If the class attribute and entry point name ever diverge, AC-1 will pass (testing the attribute) but registry lookup will fail. The AC should either: (a) also test that `registry.resolve('fastapi')` returns the plugin, or (b) document that the class attribute must match the entry point (already in Design Note 3)."
+    },
+    {
+      "id": "NB-2",
+      "severity": "LOW",
+      "area": "AC-2a 'at minimum' ambiguity",
+      "description": "The phrase 'at minimum contains' is slightly ambiguous. It could mean 'at least these 3 paths' (minimum cardinality) or 'includes these paths among others' (set membership). Context suggests set membership, but tightening the wording would remove ambiguity."
+    },
+    {
+      "id": "NB-3",
+      "severity": "LOW",
+      "area": "AC-2b combined FileProvider + DependencyProvider",
+      "description": "AC-2b tests FileProvider staging AND DependencyProvider appending in a single AC. If the test fails, it's unclear which mixin is broken. Consider splitting into 2b_i (FileProvider: txn.stage_file assertions) and 2b_ii (DependencyProvider: txn.requirements assertions)."
+    },
+    {
+      "id": "NB-4",
+      "severity": "LOW",
+      "area": "AC-4/AC-12 implementation guidance in AC text",
+      "description": "Both AC-4 ('accessed via spec.config.get(\"fastapi\", {})') and AC-12 ('the plugin accesses config via spec.config.get(\"fastapi\", {})') embed implementation guidance in the pass/fail criterion. The behavioral assertions (content includes sqlalchemy / no exception + defaults) are independent of the access pattern. This guidance is already in Design Note 1."
+    },
+    {
+      "id": "NB-5",
+      "severity": "INFO",
+      "area": "make_spec() config compatibility",
+      "description": "make_spec() creates config={}. Tests needing config={'fastapi': {...}} (AC-4, AC-11, AC-13, AC-14) must construct ProjectSpec manually. This is straightforward but worth noting in test implementation guidance."
+    },
+    {
+      "id": "NB-6",
+      "severity": "INFO",
+      "area": "Jinja2 templates not tested",
+      "description": "The API Spec mentions optional Jinja2 templates (fastapi/plugin.py line 47). No AC covers template rendering. If templates are implemented, a follow-up ticket should add test coverage."
+    },
+    {
+      "id": "NB-7",
+      "severity": "INFO",
+      "area": "Dual fastapi (backend + frontend) not tested",
+      "description": "If both backend_id and frontend_id reference fastapi, PluginExecutionEngine deduplication behavior depends on registry.resolve_many(). No AC covers this case. Low priority for MVP."
+    }
+  ],
+  "verdict": "INCOMPLETE",
+  "summary": "T-008 has 15 of 17 ACs testable, but a blocking interface design gap prevents AC-13 and AC-15 from being implemented. DependencyProvider.dependencies(self) currently has no access to spec/config, making conditional dependencies based on `auth` impossible. Resolution Option A (add spec parameter to DependencyProvider) requires changes to base.py, plugin_execution_engine.py, _shared.py, conftest.py, and tests — a cross-cutting change spanning 5 files. The remaining 15 ACs are well-specified with concrete values, Given/When/Then structure, and existing test infrastructure (MockTransaction, make_spec, mock executors, ValidationEngine pattern). Once the DependencyProvider interface issue is resolved, T-008 is ready for test-first implementation. Recommended resolution: adopt Option A (dependencies(self, spec)) and remove the INCOMPLETE designation."
+}
