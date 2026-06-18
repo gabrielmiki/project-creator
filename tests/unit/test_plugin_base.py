@@ -6,6 +6,7 @@ import pathlib
 import pytest
 
 from forge.domain import GeneratedFile, ProjectSpec, Question
+from forge.infrastructure import ProcessExecutor
 from forge.plugins.base import (
     CommandRunner,
     Configurable,
@@ -109,10 +110,10 @@ class TestAC2_IsInstanceUninherited:
             def directories(self, spec: ProjectSpec) -> list[str]:
                 return []
 
-            def generate(self, spec: ProjectSpec, target_dir: pathlib.Path) -> None:
+            def generate(self, spec: ProjectSpec, target_dir: pathlib.Path, executor: ProcessExecutor) -> None:
                 pass
 
-            def dependencies(self) -> list[str]:
+            def dependencies(self, spec: ProjectSpec) -> list[str]:
                 return []
 
         p = FullPlugin()
@@ -169,10 +170,15 @@ class TestAC4_NoCrossLayerImports:
 
     ALLOWED_PREFIXES = ("forge.domain",)
 
+    # base.py defines the CommandRunner mixin whose generate() signature
+    # references ProcessExecutor. This is the only file exempted from the
+    # infrastructure import ban — concrete plugins must NOT import infrastructure.
+    INFRA_EXEMPT_FILES = {"base.py"}
+
     def _plugins_source_files(self) -> list[pathlib.Path]:
         here = pathlib.Path(__file__).resolve().parent.parent.parent
         plugins_dir = here / "src" / "forge" / "plugins"
-        files = sorted(plugins_dir.glob("*.py"))
+        files = sorted(plugins_dir.rglob("*.py"))
         assert files, (
             f"No source files found in {plugins_dir}. Expected at least base.py and __init__.py."
         )
@@ -205,4 +211,6 @@ class TestAC4_NoCrossLayerImports:
     def _check_forbidden(self, module_name: str, filename: str) -> None:
         for prefix in self.FORBIDDEN_PREFIXES:
             if module_name == prefix or module_name.startswith(prefix + "."):
+                if prefix == "forge.infrastructure" and filename in self.INFRA_EXEMPT_FILES:
+                    continue
                 pytest.fail(f"{filename} imports forbidden module: {module_name}")

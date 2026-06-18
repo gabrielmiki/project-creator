@@ -40,7 +40,8 @@ class PluginRegistry:
                 self._discovered[plugin_id] = plugin
             except Exception:
                 logger.exception(
-                    "Failed to load entry point plugin %s", ep.name,
+                    "Failed to load entry point plugin %s",
+                    ep.name,
                 )
 
         # Tier 2: .plugins/ directory (priority 5)
@@ -64,7 +65,8 @@ class PluginRegistry:
             exec(py_file.read_text(), namespace)
         except Exception:
             logger.exception(
-                "Failed to execute plugin file %s", py_file,
+                "Failed to execute plugin file %s",
+                py_file,
             )
             return
         plugin = namespace.get("plugin")
@@ -74,13 +76,13 @@ class PluginRegistry:
         if plugin_id in self._discovered:
             if self.strict:
                 raise DiscoveryError(
-                    f"Plugin '{plugin_id}' conflict between "
-                    f"entry point and .plugins/{py_file.name}"
+                    f"Plugin '{plugin_id}' conflict between entry point and .plugins/{py_file.name}"
                 )
             logger.warning(
                 "Plugin '%s' conflict: entry point (%s) wins "
                 "over .plugins/%s — user plugin skipped",
-                plugin_id, self._discovered[plugin_id],
+                plugin_id,
+                self._discovered[plugin_id],
                 py_file.name,
             )
             return
@@ -104,10 +106,7 @@ class PluginRegistry:
         if plugin_id not in self._discovered:
             raise KeyError(plugin_id)
         plugin = self._discovered[plugin_id]
-        return [
-            dep for dep in (plugin.requires or [])
-            if dep not in self._discovered
-        ]
+        return [dep for dep in (plugin.requires or []) if dep not in self._discovered]
 
     def topological_sort(self, plugin_ids: list[str]) -> list[PluginBase]:
         if not plugin_ids:
@@ -148,9 +147,7 @@ class PluginRegistry:
                 elif state[neighbor] == 1:
                     cycle_start = path.index(neighbor)
                     cycle = path[cycle_start:] + [neighbor]
-                    raise CycleDependencyError(
-                        f"Circular dependency detected: {' → '.join(cycle)}"
-                    )
+                    raise CycleDependencyError(f"Circular dependency detected: {' → '.join(cycle)}")
             path.pop()
             state[node] = 2
 
@@ -163,10 +160,12 @@ class PluginRegistry:
         result: list[PluginBase] = []
 
         while queue:
-            queue.sort(key=lambda pid: (
-                -len(run_after_dependents.get(pid, [])),
-                plugin_ids.index(pid),
-            ))
+            queue.sort(
+                key=lambda pid: (
+                    -len(run_after_dependents.get(pid, [])),
+                    plugin_ids.index(pid),
+                )
+            )
             node = queue.pop(0)
             result.append(self._discovered[node])
             for neighbor in graph.get(node, []):

@@ -79,7 +79,8 @@ Legend: ──► direct dependency     ~ ~ ~ ► transitive dependency
             ├─► [tests] T-017 Integration Tests — CLI/Pipeline
             └─► [tests] T-018 Integration Tests — Full Pipeline
 
-[infrastructure]  T-004 GenerationTransaction
+[infrastructure]
+  T-004 GenerationTransaction
       (imports: nothing — pure stdlib: pathlib, os, shutil)
         │
         ├─► [generation] T-006 Generation Stages
@@ -93,6 +94,15 @@ Legend: ──► direct dependency     ~ ~ ~ ► transitive dependency
         │
         └─► [tests] T-016, T-017, T-018 Integration Tests
                 └── test atomic commit/rollback end-to-end
+
+  T08.1 ProcessExecutor
+      (imports: nothing — subprocess.run)
+        │
+        ├─► [generation] T-006 PluginExecutionEngine
+        │       └── injected into engine (__init__ param), passed to CommandRunner.generate()
+        │
+        └─► [plugins] T-008 FastAPI Plugin
+                └── consumed via untyped executor param in generate() (AC-4 ban forbids type annotation)
 
 Architecture dependency notes:
     T-003 ProgressReporter Protocol — conceptually independent (no domain imports)
@@ -113,6 +123,15 @@ Architecture dependency notes:
         `PluginExecutionEngine` is the riskiest stage: it simultaneously couples to
         `PluginBase` mixins (T-002), `PluginRegistry.topological_sort()` (T-005),
         `ProgressReporter.should_cancel()` (T-003), and `GenerationTransaction` (T-004).
+    T-008 FastAPI Plugin — first concrete bundled plugin validating the end-to-end pipeline.
+        Implements all 4 capability mixins. 30 test-first tests in `test_plugin_fastapi.py`
+        (453 lines) cover 17 acceptance criteria. The AC-4 AST scanner (test_plugin_base.py:TestAC4)
+        applies to the new fastapi/*.py files: they must import from `forge.domain` and must NOT
+        import from `forge.ui`, `forge.generation`, or `forge.infrastructure`. The `base.py`
+        exemption does NOT extend to plugin files. The `DependencyProvider.dependencies(spec)`
+        signature was changed during TDD review (Round 2) to accept `spec: ProjectSpec`,
+        enabling conditional auth deps. All upstream interface changes are resolved and committed;
+        the codebase is implementation-ready.
 ```
 
 ### Detailed Chain: T-002 PluginBase + Mixins
@@ -307,6 +326,68 @@ T-006 (stages) ──► T-007 Orchestrator
 
 **Key chain insight:** T-007 is the **MVP assembly point** — the first ticket that wires together the registry, validation, progress reporting, infrastructure, and all 6 stages into a single callable pipeline. Its risk is **signature surface area**: the constructor takes 2+ objects, `generate()` takes 5 parameters, and there are 5 query methods, each with specific contracts tested by the 564-line test file. Every method signature, return type, and error path is locked. Unlike T-006 (complex stage internals) or T-005 (complex registry logic), T-007's complexity is in **coordination correctness**: stage ordering, error→rollback propagation, and the `overwrite_confirmed` branch.
 
+### Detailed Chain: T-008 FastAPI Plugin
+
+T-008 is the **first concrete bundled plugin** — validates the end-to-end pipeline. Unlike the upstream infrastructure tickets (T-003 through T-007), T-008 is a pure plugin implementation with no new layering. All upstream contracts are already locked by existing tests; the codebase is implementation-ready.
+
+```
+T-001 (domain) ──────────────────────────────────────┐
+  ProjectSpec, Question, GeneratedFile, QuestionType   │
+                                                        │
+T-002 (plugins/base.py) ──────────────────────────────┤
+  PluginBase (name, requires)                           ├──► T-008 FastAPI Plugin
+  Configurable (questions)                               │      (2 files to create:
+  FileProvider (files, directories)                      │       __init__.py + plugin.py)
+  CommandRunner (generate)                               │
+  DependencyProvider (dependencies)                      │
+                                                        │
+T-005 (generation/registry + validation) ──────────────┤
+  PluginRegistry.discover() ──► entry_points            │
+  ValidationEngine.validate_plugin_config()              │
+                                                        │
+T08.1 (infrastructure/process_executor.py) ────────────┘
+  ProcessExecutor
+    │
+    ├──► T-006 Generation Stages — PluginExecutionEngine
+    │      (isinstance dispatch per mixin;
+    │       FileProvider → txn.stage_file / stage_directory;
+    │       DependencyProvider → txn.requirements;
+    │       CommandRunner → executor.run())
+    │
+    ├──► T-007 Orchestrator Facade
+    │      (registry.discover → instantiate FastapiPlugin;
+    │       headless path calls validate_plugin_config;
+    │       generate() passes txn + executor through stages)
+    │
+    ├──► tests/unit/test_plugin_fastapi.py (30 tests, 17 ACs)
+    │      (all fail test-first: ImportError — expected)
+    │
+    └──► T-016/T-017/T-018 Integration Tests
+           (end-to-end pipeline with real FastapiPlugin)
+```
+
+**Key chain insight:** T-008 is a **pure downstream consumer** — it implements interfaces defined by T-002, registers via T-005 discovery, and is executed by T-006's PluginExecutionEngine. The implementation has zero impact on upstream files: no base class changes, no registry changes, no engine changes. The 30 test-first tests in `test_plugin_fastapi.py` serve as the complete acceptance specification. All 3 TDD review rounds are complete (8 issues found and fixed across 6 files); the codebase is ready for implementation with no further refactoring.
+
+**Pre-implementation issues already resolved:**
+1. `DependencyProvider.dependencies()` missing `spec` param → fixed in TDD R2 (6 call sites updated)
+2. AC-4 scanner `glob()` → `rglob()` → fixed in TDD R1
+3. `base.py` INFRA_EXEMPT_FILES → fixed in TDD R1
+4. Headless validation path missing `validate_plugin_config()` → fixed in TDD R1
+5. `spec.config.get()` pattern documented → fixed in TDD R1
+
+**Files to create:**
+| File | Purpose | Constraints |
+|------|---------|-------------|
+| `src/forge/plugins/fastapi/__init__.py` | Package init + re-export | Must import from `forge.domain` (AC-4); must NOT import infra/ui/generation |
+| `src/forge/plugins/fastapi/plugin.py` | FastapiPlugin (4 mixins, 5 methods) | Same AC-4 constraints; executor param must be untyped |
+| `src/forge/plugins/fastapi/templates/` | Optional Jinja2 templates | If used, add `jinja2` to `pyproject.toml` |
+
+**Test verification:**
+- 30 tests in `test_plugin_fastapi.py` → all will auto-resolve from FAIL to PASS
+- 2 AC-10 tests in `test_validation.py` → already PASS (inline Question construction)
+- AC-4 scanner in `test_plugin_base.py` → must pass on new files
+- 166 existing unit tests → zero expected regressions
+
 ## Affected Files by Layer
 
 ### Domain Layer (T-001 — ✅ complete)
@@ -321,11 +402,14 @@ T-006 (stages) ──► T-007 Orchestrator
 ### Plugin Layer (T-002, T-008–T-011)
 | File | Action | Depends on | Created by |
 |---|---|---|---|
-| `src/forge/plugins/base.py` | **CREATE** | `Question`, `GeneratedFile`, `ProjectSpec` | T-002 |
-| `src/forge/plugins/__init__.py` | **CREATE** | `base.py` (re-exports) | T-002 |
-| `tests/unit/test_plugin_base.py` | **Already exists** | `PluginBase`, all 4 mixins | T-016 (test-first) |
-| `tests/unit/conftest.py` | **Already exists** | `PluginBase`, all 4 mixins + fixtures | T-016 (test-first) |
-| `src/forge/plugins/fastapi/plugin.py` | Pending | `Question`, `GeneratedFile`, `ProjectSpec` | T-008 |
+| `src/forge/plugins/base.py` | ✅ **Created** | `Question`, `GeneratedFile`, `ProjectSpec` | T-002 |
+| `src/forge/plugins/__init__.py` | ✅ **Created** | `base.py` (re-exports) | T-002 |
+| `tests/unit/test_plugin_base.py` | ✅ **Already exists** | `PluginBase`, all 4 mixins | T-016 (test-first) |
+| `tests/unit/conftest.py` | ✅ **Already exists** | `PluginBase`, all 4 mixins + fixtures | T-016 (test-first) |
+| `src/forge/plugins/fastapi/__init__.py` | **CREATE** | Must import from `forge.domain` (AC-4 scanner req); re-export `FastapiPlugin` | T-008 |
+| `src/forge/plugins/fastapi/plugin.py` | **CREATE** | `Question`, `GeneratedFile`, `ProjectSpec`; NO infra imports; untyped executor param | T-008 |
+| `src/forge/plugins/fastapi/templates/` | Optional | Jinja2 templates (would require `jinja2` in `pyproject.toml`) | T-008 |
+| `tests/unit/test_plugin_fastapi.py` | ✅ **Already exists (test-first)** | 453 lines, 30 tests covering 17 ACs — all fail with ImportError (expected) | T-016 (test-first) |
 | `src/forge/plugins/django/plugin.py` | Pending | `Question`, `GeneratedFile`, `ProjectSpec` | T-009 |
 | `src/forge/plugins/react/plugin.py` | Pending | `Question`, `GeneratedFile`, `ProjectSpec` | T-010 |
 | `src/forge/plugins/htmx/plugin.py` | Pending | `Question`, `GeneratedFile`, `ProjectSpec` | T-011 |
@@ -355,13 +439,14 @@ T-006 (stages) ──► T-007 Orchestrator
 | `src/forge/generation/orchestrator.py` | **CREATE (T-007 — TEST-FIRST)** | Orchestrator facade class + GenerationResult dataclass; coordinates 6 stages, handles error→rollback, provides query methods; must include AC-8 infrastructure import | `TemplateDefinition`, `Question`, `ProjectSpec`, `DurationEstimate`, `PluginRegistry`, `ValidationEngine`, `GenerationTransaction`, `ProgressReporter`, all 6 `GenerationStage` classes |
 | `tests/unit/test_orchestrator.py` | **Already exists (T-007 test-first)** | 564 lines, 14 tests, 6 test classes — contract-locks Orchestrator API, GenerationResult, query methods, headless CLI flow | — |
 
-### Infrastructure Layer (T-003 creates __init__.py → T-004 replaces placeholder + creates transaction.py)
+### Infrastructure Layer (T-003 creates __init__.py → T-004 replaces placeholder + creates transaction.py → T08.1 creates ProcessExecutor)
 | File | Status | Action | Depends on |
 |---|---|---|---|
-| `src/forge/infrastructure/__init__.py` | ✅ **Created (T-003)** → **Update (T-004)** | Replace `_PLACEHOLDER` with `from forge.infrastructure.transaction import GenerationTransaction` | T-003 scaffold (placeholder → real export) |
-| `src/forge/infrastructure/transaction.py` | **CREATE (T-004)** | `GenerationTransaction` class — 8 methods: `__init__`, `stage_file`, `stage_directory`, `add_checkpoint`, `commit`, `rollback`, `__enter__`, `__exit__` | None (pure stdlib) |
-| `src/forge/generation/progress.py` | ✅ **Created (T-003)** → **Update (T-004)** | Change import: `_PLACEHOLDER as _` → `GenerationTransaction as _` | `GenerationTransaction` (replaces no-op import) |
-| `src/forge/generation/__init__.py` | ✅ **Created (T-003)** → **Update (T-004)** | Change import: `_PLACEHOLDER as _` → `GenerationTransaction as _` | `GenerationTransaction` (replaces no-op import) |
+| `src/forge/infrastructure/__init__.py` | ✅ **Created (T-003)** → **Update (T-004)** → **Update (T08.1)** | Replace `_PLACEHOLDER` with `GenerationTransaction`; T08.1 adds `ProcessExecutor` re-export | T-003 scaffold → T-004 → T08.1 |
+| `src/forge/infrastructure/transaction.py` | ✅ **Created (T-004)** | `GenerationTransaction` class — 8 methods | None (pure stdlib) |
+| `src/forge/infrastructure/process_executor.py` | ✅ **Created (T08.1)** | `ProcessExecutor` — wraps `subprocess.run()`, injected into `PluginExecutionEngine` | None (pure stdlib) |
+| `src/forge/generation/progress.py` | ✅ **Created (T-003)** → **Update (T-004)** | Change import: `_PLACEHOLDER as _` → `GenerationTransaction as _` | `GenerationTransaction` |
+| `src/forge/generation/__init__.py` | ✅ **Created (T-003)** → **Update (T-004)** | Change import: `_PLACEHOLDER as _` → `GenerationTransaction as _` | `GenerationTransaction` |
 
 ### CLI / App Layer (T-007 — ⏳ pending)
 | File | Status | Action | Depends on |
@@ -453,3 +538,11 @@ DurationEstimate(estimated_seconds, has_slow_steps, slow_step_details)
 | **Headless path: validation errors → exit 1, not exception** — AC-4a/4b/4c expect error message printed + exit code 1. The headless path must catch `json.JSONDecodeError`, `ValidationError`s, and `KeyError`s, print user-friendly messages, and call `sys.exit(1)` — not let exceptions propagate. | T-007 | Medium — must catch and exit cleanly without traceback |
 | **Test-first coupling (564 lines)** — `test_orchestrator.py` defines exact import paths (`from forge.generation.orchestrator import Orchestrator, GenerationResult`), method signatures, parameter names (`overwrite_confirmed`), return types, and behavior. Any deviation causes immediate test failure. | T-007 | **High** — tests are the spec; 14 ACs across 6 test classes, 564 lines |
 | **`__main__.py` must not import core objects** — by role separation spec, `__main__.py` only parses CLI flags and calls `app.main(args)`. It must not construct `PluginRegistry`, `ValidationEngine`, or `Orchestrator` directly. Violation breaks the architectural separation. | T-007 | Low — clean architectural rule; easy to verify in review |
+| |---|---|---|
+| **AC-4 scanner infra import ban applies to fastapi/*.py** — `test_plugin_base.py:TestAC4` walks all AST nodes unconditionally; `from forge.infrastructure import ProcessExecutor` fails even under `TYPE_CHECKING`. The `generate()` executor param must be untyped. | T-008 | **High** — scanner is a hard gate; developer sees failure immediately |
+| **Config access via `spec.config.get()` not `spec.plugin_config()`** — `plugin_config("fastapi")` raises `KeyError` when key absent. AC-12 tests `config={}` → no exception. All 4 config-reading methods must use `.get("fastapi", {})`. | T-008 | **Medium** — AC-12 tests catch the crash |
+| **Default value consistency across 3 config keys** — `orm`→`"sqlalchemy"`, `auth`→`False`, `include_alembic`→`False`. Must be applied uniformly across `files()`, `directories()`, `dependencies()`. AC-11/AC-12 test empty/missing config with exact defaults. | T-008 | **Medium** — one wrong default fails a specific test |
+| **Auth flag cross-referencing (files + dirs + deps)** — `auth=True` simultaneously adds files (`middleware/auth.py`, `routes/auth.py`), directories (`app/middleware/`), and deps (`python-jose`, `passlib`). Three ACs (13, 14, 15) test this across 3 methods. | T-008 | **Medium** — inconsistency in one method fails only its specific test |
+| **`executor.run()` exact command list in AC-7** — test asserts `["uv", "add", "fastapi>=0.115", "uvicorn[standard]>=0.34"]`. Auth deps must go to `dependencies()` only, not to `executor.run()`. | T-008 | **Low** — single specific assertion; easy to verify |
+| **`files()` returns `Path` objects, not strings** — AC-2a checks `isinstance(f.path, Path)`. All `GeneratedFile.path` values must be `Path`. | T-008 | **Low** — standard domain model usage |
+| **30 test-first tests auto-resolve from FAIL to PASS** — existing test infrastructure supports all ACs; no cross-ticket coupling. | T-008 | **Low** — self-contained test file; ImportError resolves on file creation |

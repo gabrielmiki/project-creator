@@ -11,6 +11,7 @@ from forge.generation.progress import StdoutProgressReporter
 from forge.generation.registry import PluginRegistry
 from forge.generation.validation import ValidationEngine
 from forge.infrastructure import GenerationTransaction
+from forge.plugins.base import Configurable
 
 
 def detect_display() -> bool:
@@ -72,6 +73,19 @@ def _run_headless(args: list[str]) -> None:
 
     validation = ValidationEngine(registry)
     errors = validation.validate_spec(spec)
+
+    for pid in [spec.template.backend_id, spec.template.frontend_id]:
+        if pid:
+            try:
+                plugin = registry.resolve(pid)
+                if isinstance(plugin, Configurable):
+                    plugin_errors = validation.validate_plugin_config(
+                        pid, spec.config.get(pid, {}), plugin.questions()
+                    )
+                    errors.extend(plugin_errors)
+            except KeyError:
+                pass
+
     error_errors = [e for e in errors if e.severity == "error"]
     if error_errors:
         print(f"Validation error: {error_errors[0].message}")

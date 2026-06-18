@@ -6,14 +6,16 @@ from forge.domain import ProjectSpec
 from forge.generation.errors import MissingDependencyError
 from forge.generation.progress import ProgressReporter
 from forge.infrastructure import GenerationTransaction as _  # noqa: F401
+from forge.infrastructure import ProcessExecutor
 from forge.plugins.base import CommandRunner, DependencyProvider, FileProvider
 
 
 class PluginExecutionEngine:
     name = "plugin-execution-engine"
 
-    def __init__(self, registry: Any) -> None:
+    def __init__(self, registry: Any, executor: ProcessExecutor | None = None) -> None:
         self._registry = registry
+        self._executor = executor or ProcessExecutor()
 
     def run(
         self,
@@ -23,8 +25,7 @@ class PluginExecutionEngine:
         progress: ProgressReporter,
     ) -> None:
         plugin_ids: list[str] = [
-            pid for pid in [spec.template.backend_id, spec.template.frontend_id]
-            if pid
+            pid for pid in [spec.template.backend_id, spec.template.frontend_id] if pid
         ]
         if not plugin_ids:
             return
@@ -32,7 +33,7 @@ class PluginExecutionEngine:
         plugins = self._registry.resolve_many(plugin_ids)
 
         for plugin in plugins:
-            for dep in (plugin.requires or []):
+            for dep in plugin.requires or []:
                 if dep not in plugin_ids:
                     raise MissingDependencyError(
                         f"Missing dependency '{dep}' required by plugin '{plugin.name}'"
@@ -53,7 +54,7 @@ class PluginExecutionEngine:
                     txn.stage_directory(d)
 
             if isinstance(plugin, DependencyProvider):
-                txn.requirements.extend(plugin.dependencies())
+                txn.requirements.extend(plugin.dependencies(spec))
 
             if isinstance(plugin, CommandRunner):
-                plugin.generate(spec, output_dir)
+                plugin.generate(spec, output_dir, self._executor)

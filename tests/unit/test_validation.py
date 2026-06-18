@@ -330,3 +330,36 @@ class TestAC29_34_PluginConfigValidation:
     ) -> None:
         errors = engine.validate_plugin_config("myplugin", {"key": "val"}, [])
         assert errors == []
+
+    # ── AC-10: FastAPI orm invalid option ──
+
+    def test_orm_invalid_option_for_fastapi(
+        self,
+        engine: ValidationEngine,
+    ) -> None:
+        questions = [
+            Question(
+                key="orm",
+                label="ORM",
+                question_type=QuestionType.CHOICE,
+                options=["sqlalchemy", "none"],
+            ),
+        ]
+        errors = engine.validate_plugin_config("fastapi", {"orm": "invalid"}, questions)
+        assert len(errors) >= 1
+        assert any(e.field == "orm" for e in errors)
+
+    def test_orm_valid_option_for_fastapi(
+        self,
+        engine: ValidationEngine,
+    ) -> None:
+        questions = [
+            Question(
+                key="orm",
+                label="ORM",
+                question_type=QuestionType.CHOICE,
+                options=["sqlalchemy", "none"],
+            ),
+        ]
+        errors = engine.validate_plugin_config("fastapi", {"orm": "sqlalchemy"}, questions)
+        assert errors == []

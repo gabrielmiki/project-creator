@@ -22,6 +22,4 @@ class DirectoryInitializer:
 
         entries = [e for e in output_dir.iterdir() if not e.name.startswith(".")]
         if entries:
-            raise DirectoryNotEmptyError(
-                f"Output directory '{output_dir}' exists and is not empty"
-            )
+            raise DirectoryNotEmptyError(f"Output directory '{output_dir}' exists and is not empty")

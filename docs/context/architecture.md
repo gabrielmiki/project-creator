@@ -130,7 +130,7 @@ class DependencyProvider(ABC):
     """Plugin requires Python packages."""
 
     @abstractmethod
-    def dependencies(self) -> list[str]: ...
+    def dependencies(self, spec: ProjectSpec) -> list[str]: ...
 ```
 
 Plugins inherit only the mixins they need:

@@ -1,7 +1,13 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from forge.domain import GeneratedFile, ProjectSpec, Question
+
+if TYPE_CHECKING:
+    from forge.infrastructure import ProcessExecutor
 
 
 class PluginBase(ABC):
@@ -37,9 +43,9 @@ class FileProvider(ABC):
 
 class CommandRunner(ABC):
     @abstractmethod
-    def generate(self, spec: ProjectSpec, target_dir: Path) -> None: ...
+    def generate(self, spec: ProjectSpec, target_dir: Path, executor: ProcessExecutor) -> None: ...
 
 
 class DependencyProvider(ABC):
     @abstractmethod
-    def dependencies(self) -> list[str]: ...
+    def dependencies(self, spec: ProjectSpec) -> list[str]: ...

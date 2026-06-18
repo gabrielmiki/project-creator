@@ -17,6 +17,7 @@ from forge.generation.stages import (
 )
 from forge.generation.validation import ValidationEngine
 from forge.infrastructure import GenerationTransaction as _  # noqa: F401
+from forge.infrastructure import ProcessExecutor
 from forge.plugins.base import CommandRunner, Configurable, FileProvider, PluginBase
 
 
@@ -33,16 +34,18 @@ class Orchestrator:
         registry: PluginRegistry,
         validation: ValidationEngine,
         stages: list[Any] | None = None,
+        executor: ProcessExecutor | None = None,
     ) -> None:
         self._registry = registry
         self._validation = validation
         if stages is not None:
             self._stages = stages
         else:
+            self._executor = executor or ProcessExecutor()
             self._stages = [
                 DirectoryInitializer(),
                 SharedStructureScaffolder(),
-                PluginExecutionEngine(registry),
+                PluginExecutionEngine(registry, self._executor),
                 JustfileGenerator(),
                 ProjectDocumentationWriter(),
                 AgentSkillScaffolder(),
@@ -88,10 +91,7 @@ class Orchestrator:
         return result
 
     def estimate_duration(self, spec: ProjectSpec) -> DurationEstimate:
-        plugin_ids = [
-            pid for pid in [spec.template.backend_id, spec.template.frontend_id]
-            if pid
-        ]
+        plugin_ids = [pid for pid in [spec.template.backend_id, spec.template.frontend_id] if pid]
         if not plugin_ids:
             return DurationEstimate(1, False, [])
 
