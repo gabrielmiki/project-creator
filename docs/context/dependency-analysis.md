@@ -143,7 +143,7 @@ T-001 (domain) ──► T-002 (plugins/base.py)
                      │         (type-checks        (drives plugins       (screens + worker)
                      │          PluginBase)         via registry)
                      │
-                     ├──► T-008 FastAPI Plugin ──► T-006 Generation Stages
+                      ├──► T-008 FastAPI Plugin ✅ ──► T-006 Generation Stages
                      ├──► T-009 Django Plugin        (plugin_execution_engine
                      ├──► T-010 React Plugin          iterates plugins)
                      └──► T-011 HTMX Plugin
@@ -328,7 +328,7 @@ T-006 (stages) ──► T-007 Orchestrator
 
 ### Detailed Chain: T-008 FastAPI Plugin
 
-T-008 is the **first concrete bundled plugin** — validates the end-to-end pipeline. Unlike the upstream infrastructure tickets (T-003 through T-007), T-008 is a pure plugin implementation with no new layering. All upstream contracts are already locked by existing tests; the codebase is implementation-ready.
+T-008 is the **first concrete bundled plugin** — validated the end-to-end pipeline. Unlike the upstream infrastructure tickets (T-003 through T-007), T-008 was a pure plugin implementation with no new layering. All upstream contracts were already locked by existing tests; the codebase was implementation-ready.
 
 ```
 T-001 (domain) ──────────────────────────────────────┐
@@ -336,8 +336,8 @@ T-001 (domain) ─────────────────────�
                                                         │
 T-002 (plugins/base.py) ──────────────────────────────┤
   PluginBase (name, requires)                           ├──► T-008 FastAPI Plugin
-  Configurable (questions)                               │      (2 files to create:
-  FileProvider (files, directories)                      │       __init__.py + plugin.py)
+  Configurable (questions)                               │      ✅ 2 files created:
+  FileProvider (files, directories)                      │       __init__.py + plugin.py
   CommandRunner (generate)                               │
   DependencyProvider (dependencies)                      │
                                                         │
@@ -360,13 +360,13 @@ T08.1 (infrastructure/process_executor.py) ────────────�
     │       generate() passes txn + executor through stages)
     │
     ├──► tests/unit/test_plugin_fastapi.py (30 tests, 17 ACs)
-    │      (all fail test-first: ImportError — expected)
+    │      ✅ all 30 resolved from FAIL to PASS
     │
     └──► T-016/T-017/T-018 Integration Tests
            (end-to-end pipeline with real FastapiPlugin)
 ```
 
-**Key chain insight:** T-008 is a **pure downstream consumer** — it implements interfaces defined by T-002, registers via T-005 discovery, and is executed by T-006's PluginExecutionEngine. The implementation has zero impact on upstream files: no base class changes, no registry changes, no engine changes. The 30 test-first tests in `test_plugin_fastapi.py` serve as the complete acceptance specification. All 3 TDD review rounds are complete (8 issues found and fixed across 6 files); the codebase is ready for implementation with no further refactoring.
+**Key chain insight:** T-008 is a **pure downstream consumer** — it implements interfaces defined by T-002, registers via T-005 discovery, and is executed by T-006's PluginExecutionEngine. The implementation had zero impact on upstream files: no base class changes, no registry changes, no engine changes. The 30 test-first tests in `test_plugin_fastapi.py` served as the complete acceptance specification. All 3 TDD review rounds were complete (8 issues found and fixed across 6 files); the codebase was implementation-ready.
 
 **Pre-implementation issues already resolved:**
 1. `DependencyProvider.dependencies()` missing `spec` param → fixed in TDD R2 (6 call sites updated)
@@ -375,18 +375,70 @@ T08.1 (infrastructure/process_executor.py) ────────────�
 4. Headless validation path missing `validate_plugin_config()` → fixed in TDD R1
 5. `spec.config.get()` pattern documented → fixed in TDD R1
 
+**Implementation status:** ✅ **Complete** — 2 files created, 30 tests passing, AC-4 scanner passes.
+
+---
+
+### Detailed Chain: T-009 Django Plugin
+
+T-009 is the **second concrete bundled plugin** — follows the same pattern as T-008 but with Django-specific structure. All upstream contracts are locked by existing tests; the codebase is implementation-ready. The Django plugin adds conditional support for 3 database backends and optional DRF, with cross-method consistency as the primary risk.
+
+```
+T-001 (domain) ──────────────────────────────────────┐
+  ProjectSpec, Question, GeneratedFile, QuestionType   │
+                                                        │
+T-002 (plugins/base.py) ──────────────────────────────┤
+  PluginBase (name, requires)                           ├──► T-009 Django Plugin
+  Configurable (questions)                               │      (2 files to create:
+  FileProvider (files, directories)                      │       __init__.py + plugin.py)
+  CommandRunner (generate)                               │
+  DependencyProvider (dependencies)                      │
+                                                        │
+T-005 (generation/registry + validation) ──────────────┤
+  PluginRegistry.discover() ──► entry_points            │
+  ValidationEngine.validate_plugin_config()              │
+                                                        │
+T08.1 (infrastructure/process_executor.py) ────────────┘
+  ProcessExecutor
+    │
+    ├──► T-006 Generation Stages — PluginExecutionEngine
+    │      (isinstance dispatch per mixin;
+    │       FileProvider → txn.stage_file / stage_directory;
+    │       DependencyProvider → txn.requirements;
+    │       CommandRunner → executor.run())
+    │
+    ├──► T-007 Orchestrator Facade
+    │      (registry.discover → instantiate DjangoPlugin;
+    │       headless path calls validate_plugin_config;
+    │       generate() passes txn + executor through stages)
+    │
+    ├──► tests/unit/test_plugin_django.py (574 lines, 21 ACs)
+    │      (all fail test-first: ImportError — expected)
+    │
+    └──► tests/unit/test_validation.py (AC-19, 2 tests)
+           (inline Question construction for database choice;
+            already PASS — no dependency on plugin files)
+```
+
+**Key chain insight:** T-009 is a **pure downstream consumer** — architecturally identical to T-008. It implements interfaces defined by T-002, registers via T-005 discovery, and is executed by T-006's PluginExecutionEngine. The implementation has zero impact on upstream files: no base class changes, no registry changes, no engine changes. Unlike T-008 (which discovered and fixed 8 issues in upstream contracts during TDD review), T-009 benefits from all upstream interfaces being already hardened by T-008's implementation.
+
+**Design notes (critical differences from T-008):**
+1. **Conditional complexity**: T-008 has 3 config keys (orm, auth, include_alembic) with binary/ternary choices. T-009 has 2 config keys (database with 3 values, include_drf boolean) — simpler surface but with deeper cross-method coupling (3 methods must agree on the same database → engine/dep/generate mapping).
+2. **Database backend → dependency mapping**: Each of 3 database choices maps to a different pip package (psycopg2-binary, mysqlclient, or none for SQLite). T-008 only has sqlalchemy/aiosqlite for ORM or none.
+3. **Settings.py content generation**: T-009's `files()` must produce a fully-formed `config/settings.py` with conditional `DATABASES` dict and `INSTALLED_APPS` — more complex inline content than T-008's flat file templates.
+
 **Files to create:**
 | File | Purpose | Constraints |
 |------|---------|-------------|
-| `src/forge/plugins/fastapi/__init__.py` | Package init + re-export | Must import from `forge.domain` (AC-4); must NOT import infra/ui/generation |
-| `src/forge/plugins/fastapi/plugin.py` | FastapiPlugin (4 mixins, 5 methods) | Same AC-4 constraints; executor param must be untyped |
-| `src/forge/plugins/fastapi/templates/` | Optional Jinja2 templates | If used, add `jinja2` to `pyproject.toml` |
+| `src/forge/plugins/django/__init__.py` | Package init + re-export | Must `from forge.domain import ProjectSpec as _` (AC-4); must NOT import infra/ui/generation |
+| `src/forge/plugins/django/plugin.py` | DjangoPlugin (4 mixins, 5 methods) | Same AC-4 constraints; executor param must be untyped (`Any`); `_config(spec)` static helper matching FastAPI pattern |
+| `src/forge/plugins/django/templates/` | Optional Jinja2 templates | If used, add `jinja2` to `pyproject.toml` |
 
 **Test verification:**
-- 30 tests in `test_plugin_fastapi.py` → all will auto-resolve from FAIL to PASS
-- 2 AC-10 tests in `test_validation.py` → already PASS (inline Question construction)
-- AC-4 scanner in `test_plugin_base.py` → must pass on new files
-- 166 existing unit tests → zero expected regressions
+- 21 tests in `test_plugin_django.py` (574 lines) → all fail with `ImportError` (expected); will auto-resolve to PASS on file creation
+- 2 AC-19 tests in `test_validation.py` → already PASS (inline Question construction, no dependency on plugin files)
+- AC-4 scanner in `test_plugin_base.py` → must pass on new `django/*.py` files
+- 0 regressions expected in 166+ existing unit tests
 
 ## Affected Files by Layer
 
@@ -406,11 +458,15 @@ T08.1 (infrastructure/process_executor.py) ────────────�
 | `src/forge/plugins/__init__.py` | ✅ **Created** | `base.py` (re-exports) | T-002 |
 | `tests/unit/test_plugin_base.py` | ✅ **Already exists** | `PluginBase`, all 4 mixins | T-016 (test-first) |
 | `tests/unit/conftest.py` | ✅ **Already exists** | `PluginBase`, all 4 mixins + fixtures | T-016 (test-first) |
-| `src/forge/plugins/fastapi/__init__.py` | **CREATE** | Must import from `forge.domain` (AC-4 scanner req); re-export `FastapiPlugin` | T-008 |
-| `src/forge/plugins/fastapi/plugin.py` | **CREATE** | `Question`, `GeneratedFile`, `ProjectSpec`; NO infra imports; untyped executor param | T-008 |
+| `src/forge/plugins/fastapi/__init__.py` | ✅ **Created** | Must import from `forge.domain` (AC-4 scanner req); re-export `FastapiPlugin` | T-008 |
+| `src/forge/plugins/fastapi/plugin.py` | ✅ **Created** | `Question`, `GeneratedFile`, `ProjectSpec`; NO infra imports; untyped executor param | T-008 |
 | `src/forge/plugins/fastapi/templates/` | Optional | Jinja2 templates (would require `jinja2` in `pyproject.toml`) | T-008 |
-| `tests/unit/test_plugin_fastapi.py` | ✅ **Already exists (test-first)** | 453 lines, 30 tests covering 17 ACs — all fail with ImportError (expected) | T-016 (test-first) |
-| `src/forge/plugins/django/plugin.py` | Pending | `Question`, `GeneratedFile`, `ProjectSpec` | T-009 |
+| `tests/unit/test_plugin_fastapi.py` | ✅ **Passing** | 453 lines, 30 tests covering 17 ACs — all resolved from FAIL to PASS | T-016 (test-first) |
+| `src/forge/plugins/django/__init__.py` | **CREATE** | Must import `ProjectSpec` from `forge.domain` (AC-4); re-export `DjangoPlugin` | T-009 |
+| `src/forge/plugins/django/plugin.py` | **CREATE** | `Question`, `GeneratedFile`, `ProjectSpec`; NO infra imports; untyped executor param; `_config(spec)` static helper | T-009 |
+| `src/forge/plugins/django/templates/` | Optional | Jinja2 templates (would require `jinja2` in `pyproject.toml`) | T-009 |
+| `tests/unit/test_plugin_django.py` | ✅ **Already exists (test-first)** | 574 lines, 21 tests covering 21 ACs — all fail with ImportError (expected) | T-016 (test-first) |
+| `tests/unit/test_validation.py:TestAC19` | ✅ **Already exists (PASS)** | 2 tests — inline `Question` construction; no dependency on Django plugin files | T-016 (test-first) |
 | `src/forge/plugins/react/plugin.py` | Pending | `Question`, `GeneratedFile`, `ProjectSpec` | T-010 |
 | `src/forge/plugins/htmx/plugin.py` | Pending | `Question`, `GeneratedFile`, `ProjectSpec` | T-011 |
 
@@ -539,10 +595,21 @@ DurationEstimate(estimated_seconds, has_slow_steps, slow_step_details)
 | **Test-first coupling (564 lines)** — `test_orchestrator.py` defines exact import paths (`from forge.generation.orchestrator import Orchestrator, GenerationResult`), method signatures, parameter names (`overwrite_confirmed`), return types, and behavior. Any deviation causes immediate test failure. | T-007 | **High** — tests are the spec; 14 ACs across 6 test classes, 564 lines |
 | **`__main__.py` must not import core objects** — by role separation spec, `__main__.py` only parses CLI flags and calls `app.main(args)`. It must not construct `PluginRegistry`, `ValidationEngine`, or `Orchestrator` directly. Violation breaks the architectural separation. | T-007 | Low — clean architectural rule; easy to verify in review |
 | |---|---|---|
-| **AC-4 scanner infra import ban applies to fastapi/*.py** — `test_plugin_base.py:TestAC4` walks all AST nodes unconditionally; `from forge.infrastructure import ProcessExecutor` fails even under `TYPE_CHECKING`. The `generate()` executor param must be untyped. | T-008 | **High** — scanner is a hard gate; developer sees failure immediately |
-| **Config access via `spec.config.get()` not `spec.plugin_config()`** — `plugin_config("fastapi")` raises `KeyError` when key absent. AC-12 tests `config={}` → no exception. All 4 config-reading methods must use `.get("fastapi", {})`. | T-008 | **Medium** — AC-12 tests catch the crash |
-| **Default value consistency across 3 config keys** — `orm`→`"sqlalchemy"`, `auth`→`False`, `include_alembic`→`False`. Must be applied uniformly across `files()`, `directories()`, `dependencies()`. AC-11/AC-12 test empty/missing config with exact defaults. | T-008 | **Medium** — one wrong default fails a specific test |
-| **Auth flag cross-referencing (files + dirs + deps)** — `auth=True` simultaneously adds files (`middleware/auth.py`, `routes/auth.py`), directories (`app/middleware/`), and deps (`python-jose`, `passlib`). Three ACs (13, 14, 15) test this across 3 methods. | T-008 | **Medium** — inconsistency in one method fails only its specific test |
-| **`executor.run()` exact command list in AC-7** — test asserts `["uv", "add", "fastapi>=0.115", "uvicorn[standard]>=0.34"]`. Auth deps must go to `dependencies()` only, not to `executor.run()`. | T-008 | **Low** — single specific assertion; easy to verify |
-| **`files()` returns `Path` objects, not strings** — AC-2a checks `isinstance(f.path, Path)`. All `GeneratedFile.path` values must be `Path`. | T-008 | **Low** — standard domain model usage |
-| **30 test-first tests auto-resolve from FAIL to PASS** — existing test infrastructure supports all ACs; no cross-ticket coupling. | T-008 | **Low** — self-contained test file; ImportError resolves on file creation |
+| **AC-4 scanner infra import ban applies to fastapi/*.py** — `test_plugin_base.py:TestAC4` walks all AST nodes unconditionally; `from forge.infrastructure import ProcessExecutor` fails even under `TYPE_CHECKING`. The `generate()` executor param must be untyped. | T-008 | ✅ **Resolved** — `plugin.py` uses `executor: Any`; AC-4 scanner passes |
+| **Config access via `spec.config.get()` not `spec.plugin_config()`** — `plugin_config("fastapi")` raises `KeyError` when key absent. AC-12 tests `config={}` → no exception. All 4 config-reading methods must use `.get("fastapi", {})`. | T-008 | ✅ **Resolved** — `_config()` static helper pattern established |
+| **Default value consistency across 3 config keys** — `orm`→`"sqlalchemy"`, `auth`→`False`, `include_alembic`→`False`. Must be applied uniformly across `files()`, `directories()`, `dependencies()`. AC-11/AC-12 test empty/missing config with exact defaults. | T-008 | ✅ **Resolved** — all 30 tests passing |
+| **Auth flag cross-referencing (files + dirs + deps)** — `auth=True` simultaneously adds files (`middleware/auth.py`, `routes/auth.py`), directories (`app/middleware/`), and deps (`python-jose`, `passlib`). Three ACs (13, 14, 15) test this across 3 methods. | T-008 | ✅ **Resolved** — all ACs passing |
+| **`executor.run()` exact command list in AC-7** — test asserts `["uv", "add", "fastapi>=0.115", "uvicorn[standard]>=0.34"]`. Auth deps must go to `dependencies()` only, not to `executor.run()`. | T-008 | ✅ **Resolved** — all 30 tests passing |
+| **`files()` returns `Path` objects, not strings** — AC-2a checks `isinstance(f.path, Path)`. All `GeneratedFile.path` values must be `Path`. | T-008 | ✅ **Resolved** — implementation uses `Path()` |
+| **30 test-first tests auto-resolve from FAIL to PASS** — existing test infrastructure supports all ACs; no cross-ticket coupling. | T-008 | ✅ **Resolved** — all 30 tests PASS |
+| **Cross-method consistency: `files()`, `dependencies()`, `generate()` must agree on conditional logic** — if `config/settings.py` references `"ENGINE": "django.db.backends.postgresql"`, then `dependencies()` must include `psycopg2-binary>=2.9` and `generate()` must `uv add` it. Any mismatch fails AC-4 + AC-12 + AC-15 simultaneously. | T-009 | **High** — lesson from T-008 asyncpg mismatch; 3 methods, 3 database choices, 2 DRF states = 6 conditional paths to keep in sync |
+| **AC-4 scanner infra import ban applies to django/*.py** — same `test_plugin_base.py:TestAC4` AST scanner. `__init__.py` must import `ProjectSpec` from `forge.domain`. `generate()` executor param must be untyped `Any`. | T-009 | **High** — scanner is a hard gate; same constraint as T-008, easy to follow the pattern |
+| **Config access via `spec.config.get("django", {})` not `spec.plugin_config("django")`** — AC-18 tests `config={}` (no `"django"` key) expects no exception. Must use `_config(spec)` static helper matching FastAPI pattern. | T-009 | **Medium** — AC-18 test catches the crash |
+| **SQLite default is implicit (not explicit in config)** — AC-17 tests `config={"django": {}}` expects `sqlite3` engine, no extra deps. All `.get()` calls must use `"sqlite"` as default for `database` and `False` for `include_drf`. Empty `_config()` returns `{}`. | T-009 | **Medium** — AC-17 specifically tests this |
+| **AC-19 validation test uses inline `Question` construction** — `test_validation.py:TestAC19` builds `Question(key="database", options=["postgresql", "sqlite", "mysql"])` directly. Does NOT call `DjangoPlugin().questions()`. If plugin's `options` list differs from test's inline list, validation test still passes but plugin AC-3 test fails. | T-009 | **Medium** — decoupled test means inconsistency is detected only indirectly |
+| **`generate()` command list must match test expectations** — AC-13 asserts `executor.run.call_args[0][0]` contains `["uv", "add", "django>=5.1"]`. AC-14–AC-16 assert conditional extras. Format must match exactly. | T-009 | **Low** — single specific assertion per AC |
+| **`files()` returns `Path` objects, not strings** — AC-2a checks `isinstance(f.path, Path)`. | T-009 | **Low** — same pattern as T-008 |
+| **`directories()` returns strings** — `"config/"`, `"apps/"`, `"static/"`, `"templates/"` — not `Path` objects. | T-009 | **Low** — same pattern as T-008 |
+| **`name` must be `"django"` matching entry point** — already registered in `pyproject.toml:16`. | T-009 | **Low** — class attribute; test catches mismatch |
+| **`include_celery` is explicitly out of scope** — Design Note 10 removes it. Do not implement. | T-009 | **Low** — documented constraint |
+| **21 test-first tests auto-resolve from FAIL to PASS** — `test_plugin_django.py` (574 lines, 21 ACs) all fail with `ImportError`. Resolve on file creation. | T-009 | **Low** — self-contained test file |
