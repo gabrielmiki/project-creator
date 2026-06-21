@@ -363,3 +363,33 @@ class TestAC29_34_PluginConfigValidation:
         ]
         errors = engine.validate_plugin_config("fastapi", {"orm": "sqlalchemy"}, questions)
         assert errors == []
+
+
+# ── AC-19: Django database invalid value ──
+
+
+class TestAC19_DjangoDatabaseValidation:
+    def test_database_invalid_value(self, engine: ValidationEngine) -> None:
+        questions = [
+            Question(
+                key="database",
+                label="Database",
+                question_type=QuestionType.CHOICE,
+                options=["postgresql", "sqlite", "mysql"],
+            ),
+        ]
+        errors = engine.validate_plugin_config("django", {"database": "oracle"}, questions)
+        assert len(errors) >= 1
+        assert any(e.field == "database" for e in errors)
+
+    def test_database_valid_value(self, engine: ValidationEngine) -> None:
+        questions = [
+            Question(
+                key="database",
+                label="Database",
+                question_type=QuestionType.CHOICE,
+                options=["postgresql", "sqlite", "mysql"],
+            ),
+        ]
+        errors = engine.validate_plugin_config("django", {"database": "postgresql"}, questions)
+        assert errors == []
