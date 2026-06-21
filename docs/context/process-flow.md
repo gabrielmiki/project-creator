@@ -79,32 +79,23 @@ Orchestrator.generate(spec, output_dir, progress)
     │       output_dir.mkdir(parents=True, exist_ok=True)
     │
     ├── Stage 2: SharedStructureScaffolder
-    │   ├── AGENTS.md (from template)
-    │   ├── CLAUDE.md (symlink to AGENTS.md)
-    │   ├── .gitignore (from template)
     │   ├── README.md
-    │   ├── docs/
-    │   │   ├── context/architecture.md
-    │   │   ├── context/pipeline.md
-    │   │   ├── context/process-flow.md
-    │   │   ├── adr/
-    │   │   ├── schemas/
-    │   │   ├── best-practices/
-    │   │   └── assets/
-    │   ├── .claude/
-    │   │   ├── agents/
-    │   │   ├── skills/
-    │   │   └── handoffs/
-    │   ├── tests/
-    │   └── scripts/
+    │   ├── pyproject.toml
+    │   ├── .gitignore
+    │   ├── .env.example
+    │   ├── .python-version
+    │   └── docs/
+    │       ├── index.md
+    │       └── architecture.md
     │
     ├── Stage 3: PluginExecutionEngine (topo-sorted)
     │   ├── Backend plugin (e.g., FastAPI)
-    │   │   ├── src/{project_name}/__init__.py
-    │   │   ├── src/{project_name}/domain/{domain}/...
-    │   │   ├── pyproject.toml
-    │   │   ├── Dockerfile
-    │   │   └── uv init + uv add <deps>
+    │   │   ├── app/__init__.py, app/main.py
+    │   │   ├── app/models.py, app/schemas.py, app/database.py
+    │   │   ├── app/routes/__init__.py, app/routes/health.py
+    │   │   ├── app/middleware/auth.py, app/routes/auth.py (if auth=True)
+    │   │   ├── requirements.txt
+    │   │   └── uv add <deps> (runs in staging dir, updates pyproject.toml + uv.lock)
     │   │
     │   └── Frontend plugin (e.g., React)
     │       ├── frontend/package.json
@@ -115,10 +106,10 @@ Orchestrator.generate(spec, output_dir, progress)
     │       Serializes ProjectSpec → Justfile
     │
     ├── Stage 5: ProjectDocumentationWriter
-    │       AGENTS.md + CLAUDE.md for generated project
+    │       AGENTS.md + .claude/CLAUDE.md for generated project
     │
     └── Stage 6: AgentSkillScaffolder
-            .claude/agents/ + .claude/skills/ + .claude/handoffs/ stubs
+            .opencode/agents/ + .opencode/skills/ + .opencode/handoffs/ stubs
 ```
 
 ## Plugin Discovery

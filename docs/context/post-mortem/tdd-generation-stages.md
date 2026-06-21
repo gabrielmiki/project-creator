@@ -183,7 +183,7 @@ class MissingDependencyError(Exception):
 
 | Content | Stage | Notes |
 |---------|-------|-------|
-| README.md, .gitignore, .env.example, .python-version, docs/ stubs | Stage 2: SharedStructureScaffolder | Shared across all templates |
+| README.md, pyproject.toml, .gitignore, .env.example, .python-version, docs/ stubs | Stage 2: SharedStructureScaffolder | Shared across all templates |
 | Plugin files, commands, dependencies | Stage 3: PluginExecutionEngine | Per-plugin capability dispatch |
 | justfile with setup/dev/test/lint/format/build | Stage 4: JustfileGenerator | Framework-aware commands |
 | AGENTS.md + .claude/CLAUDE.md | Stage 5: ProjectDocumentationWriter | Project documentation |
@@ -405,7 +405,7 @@ class GenerationStage(ABC):
 #        Stage 1: DirectoryInitializer().run(spec, output_dir, txn, progress)
 #                    └─ validates output_dir, raises DirectoryNotEmptyError if non-empty
 #        Stage 2: SharedStructureScaffolder().run(spec, output_dir, txn, progress)
-#                    └─ README.md, .gitignore, .env.example, .python-version, docs/
+#                    └─ README.md, pyproject.toml, .gitignore, .env.example, .python-version, docs/
 #        Stage 3: PluginExecutionEngine(registry).run(spec, output_dir, txn, progress)
 #                    └─ topo-sort, capability dispatch, cancellation check
 #        Stage 4: JustfileGenerator().run(spec, output_dir, txn, progress)
@@ -426,7 +426,7 @@ class GenerationStage(ABC):
 #   if isinstance(plugin, DependencyProvider):
 #       txn.requirements.extend(plugin.dependencies())
 #   if isinstance(plugin, CommandRunner):
-#       plugin.generate(spec, output_dir)
+#       plugin.generate(spec, txn.staging, executor)
 #       txn.add_checkpoint([...])
 #   if progress.should_cancel(): break
 ```
@@ -654,7 +654,7 @@ class GenerationStage(ABC):
 | AC-02 | `test_file_in_dir_raises`, `test_subdirectory_raises`, `test_nested_content_raises` | Structural: `run()` on non-empty dir → `pytest.raises(DirectoryNotEmptyError)` | ✅ |
 | AC-03 | `test_shared_files_created`, `test_docs_stub_created`, `test_empty_spec_still_generates` | Structural: `txn.stage_file_calls` contains all 5 required paths; at least one `docs/`-prefixed call | ✅ |
 | AC-04 | `test_file_provider_forwards_files`, `test_file_provider_no_files`, `test_generated_file_executable_flag` | Structural: `txn.stage_file_calls` contains plugin's files; `stage_directory_calls` contains plugin's dirs; no-op when empty; executable flag triggers `os.chmod` | ✅ |
-| AC-05 | `test_command_runner_generate_called`, `test_command_runner_multiple_both_called`, `test_command_runner_adds_checkpoint` | Structural: `plugin.generate()` called with `output_dir`; `txn.add_checkpoint()` called with returned paths | ✅ |
+| AC-05 | `test_command_runner_generate_called`, `test_command_runner_multiple_both_called`, `test_command_runner_adds_checkpoint` | Structural: `plugin.generate()` called with `txn.staging`; `txn.add_checkpoint()` called with returned paths | ✅ |
 | AC-06 | `test_missing_dep_raises`, `test_present_dep_passes`, `test_empty_requires_passes` | Structural: `pytest.raises(MissingDependencyError)` with missing dep name in message; no error when dep present or empty | ✅ |
 | AC-07 | — | [integration] — orchestrator-level test | 🔲 |
 | AC-08 | `test_justfile_contains_default_commands`, `test_justfile_called_via_stage_file`, `test_justfile_no_domains_still_has_commands` | Structural: content string in `stage_file_calls` for `"justfile"` contains all 6 command names; no domains still generates | ✅ |

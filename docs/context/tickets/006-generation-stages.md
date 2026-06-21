@@ -47,6 +47,7 @@ class GenerationStage(ABC):
 ### Stage 2: SharedStructureScaffolder
 - Generates shared project files via `txn.stage_file()`:
   - `README.md`
+  - `pyproject.toml` (minimal — name, version, requires-python; `uv add` from Stage 3 appends dependencies)
   - `.gitignore`
   - `.env.example`
   - `.python-version`
@@ -61,7 +62,7 @@ class GenerationStage(ABC):
 - For each plugin, checks capabilities via `isinstance()`:
   - `FileProvider`: writes `files()` to staging via `txn.stage_file()`, creates `directories()` via `txn.stage_directory()`.
   - `DependencyProvider`: appends dependencies to `txn.requirements`.
-  - `CommandRunner`: runs `generate(spec, target_dir)` where `target_dir = output_dir`, registers external paths via `txn.add_checkpoint()`.
+  - `CommandRunner`: runs `generate(spec, target_dir, executor)` where `target_dir = txn.staging` (the staging directory, so commands like `uv add` find the `pyproject.toml` staged by Stage 2), registers external paths via `txn.add_checkpoint()`.
 - After each plugin, checks `progress.should_cancel()` and stops early if cancelled.
 - Scans plugins ahead of execution; if any selected plugin has a `requires` dependency that is not in the selected set, raises `MissingDependencyError` with a message listing the missing dependency IDs.
 - **Exception**: `forge.generation.errors.MissingDependencyError`
@@ -90,7 +91,7 @@ class GenerationStage(ABC):
 2. **Given** a `DirectoryInitializer` and existing non-empty `output_dir`, **when** `run()` is called, **then** `DirectoryNotEmptyError` is raised.
 3. **Given** a `SharedStructureScaffolder` with a valid `ProjectSpec` and `txn`, **when** `run()` is called, **then** `README.md`, `.gitignore`, `.env.example`, `.python-version`, and at least one `docs/` file exist in staging.
 4. **Given** a `PluginExecutionEngine` with a plugin implementing `FileProvider`, **when** `run()` is called, **then** the plugin's files are staged via `txn.stage_file()`.
-5. **Given** a `PluginExecutionEngine` with a plugin implementing `CommandRunner`, **when** `run()` is called, **then** `generate()` is invoked with `target_dir = output_dir`.
+5. **Given** a `PluginExecutionEngine` with a plugin implementing `CommandRunner`, **when** `run()` is called, **then** `generate()` is invoked with `target_dir = txn.staging`.
 6. **Given** a `PluginExecutionEngine` with a `requires` dependency not in the selected set, **when** `run()` is called, **then** `MissingDependencyError` is raised listing the missing dependency.
 7. **[integration]** **Given** an empty project (no domains or plugins selected), **when** stages 1–6 run, **then** Stage 3 is skipped (no-op) and the shared structure is still generated.
 8. **Given** a `JustfileGenerator` with a valid `ProjectSpec` and `txn`, **when** `run()` is called, **then** `justfile` in staging contains `setup`, `dev`, `test`, `lint`, `format`, `build` commands.

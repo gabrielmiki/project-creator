@@ -19,6 +19,14 @@ class SharedStructureScaffolder:
         readme = f"# {spec.project_name}\n\n"
         txn.stage_file("README.md", readme)
 
+        pyproject = f"""[project]
+name = "{spec.project_name}"
+version = "0.1.0"
+description = ""
+requires-python = ">=3.12"
+"""
+        txn.stage_file("pyproject.toml", pyproject)
+
         gitignore = """__pycache__/
 *.py[cod]
 *.egg-info/

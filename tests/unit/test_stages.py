@@ -235,7 +235,7 @@ class TestPluginExecutionEngine:
         PluginExecutionEngine(registry).run(spec, output_dir, txn, progress)
 
         assert plugin._generate_called
-        assert plugin._generate_target_dir == output_dir
+        assert plugin._generate_target_dir == txn.staging
 
     def test_command_runner_multiple_both_called(
         self, output_dir: Path, txn: MockTransaction, progress: MagicMock

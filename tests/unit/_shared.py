@@ -17,6 +17,7 @@ class MockTransaction:
     """Duck-typed replacement for GenerationTransaction used in stage + orchestrator tests."""
 
     def __init__(self) -> None:
+        self.staging: Path = Path("/tmp/mock-staging")
         self.stage_file_calls: list[tuple[str, str]] = []
         self.stage_directory_calls: list[str] = []
         self.add_checkpoint_calls: list[list[Path]] = []

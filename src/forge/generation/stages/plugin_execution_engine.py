@@ -57,4 +57,4 @@ class PluginExecutionEngine:
                 txn.requirements.extend(plugin.dependencies(spec))
 
             if isinstance(plugin, CommandRunner):
-                plugin.generate(spec, output_dir, self._executor)
+                plugin.generate(spec, txn.staging, self._executor)

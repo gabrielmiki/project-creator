@@ -124,7 +124,7 @@ class CommandRunner(ABC):
     """Plugin runs shell commands or scaffold tools during generation."""
 
     @abstractmethod
-    def generate(self, spec: ProjectSpec, target_dir: Path) -> None: ...
+    def generate(self, spec: ProjectSpec, target_dir: Path, executor: ProcessExecutor) -> None: ...
 
 class DependencyProvider(ABC):
     """Plugin requires Python packages."""
@@ -245,7 +245,10 @@ Orchestrator.generate(spec, output_dir, progress: ProgressReporter)
     │           Check capabilities (isinstance mixins)
     │           If FileProvider: write files + create directories via txn
     │           If DependencyProvider: append to txn.requirements
-    │           If CommandRunner: run scaffold commands, register checkpoints
+    │           If CommandRunner: run scaffold commands via
+    │               plugin.generate(spec, txn.staging, executor) — runs in
+    │               the staging directory so generated files (uv.lock,
+    │               modified pyproject.toml) land alongside staged content
     │
     ├── Stage 4: JustfileGenerator
     │       Serializes ProjectSpec → Justfile
