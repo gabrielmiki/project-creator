@@ -537,7 +537,9 @@ T08.1 (infrastructure/process_executor.py) ────────────�
 | `src/forge/plugins/react/__init__.py` | **CREATE** | Must import `ProjectSpec` from `forge.domain` (AC-4); re-export `ReactPlugin` | T-010 |
 | `src/forge/plugins/react/plugin.py` | **CREATE** | `Question`, `GeneratedFile`, `ProjectSpec`; NO infra imports; untyped executor param; `_config(spec)` static helper; all 4 mixins; 5 config keys (bundler, ts, router, tailwind, state_mgmt) | T-010 |
 | `tests/unit/test_plugin_react.py` | ✅ **Already exists (test-first)** | 875 lines, 19 test classes, 22 ACs — all fail with ImportError (expected) | T-016 (test-first) |
-| `src/forge/plugins/htmx/plugin.py` | Pending | `Question`, `GeneratedFile`, `ProjectSpec` | T-011 |
+| `src/forge/plugins/htmx/__init__.py` | **CREATE** | Must import `ProjectSpec` from `forge.domain` (AC-4); re-export `HtmxPlugin` | T-011 |
+| `src/forge/plugins/htmx/plugin.py` | **CREATE** | `Question`, `GeneratedFile`, `ProjectSpec`; NO infra imports; untyped executor param; `_config(spec)` static helper; `generate()` is no-op; `dependencies()` always `[]` | T-011 |
+| `tests/unit/test_plugin_htmx.py` | ✅ **Already exists (test-first)** | 643 lines, 18 test classes, 47 tests covering 21 ACs — 46 fail with ImportError (expected); AC-18 already PASSES | T-016 (test-first) |
 
 > **Test-first coupling:** `test_plugin_base.py` and `conftest.py` reference `forge.plugins.base` imports before the module exists.
 > T-002 must export exactly `PluginBase`, `Configurable`, `FileProvider`, `CommandRunner`, `DependencyProvider` with no naming mismatches.
@@ -694,3 +696,72 @@ DurationEstimate(estimated_seconds, has_slow_steps, slow_step_details)
 | **`state_management` is config passthrough** — Design Note 8: stored in config, `files()`/`generate()` don't branch on it, but `dependencies()` includes the package. Must resist temptation to generate store files/boilerplate. | T-010 | **Low** — documented constraint; test gap would reveal over-implementation |
 | **`name = "react"` must match entry point in pyproject.toml:17** — already registered. Class attribute mismatch would cause discovery failure. | T-010 | **Low** — AC-01 catches this; trivial to fix |
 | **875 test-first tests auto-resolve from FAIL to PASS** — `test_plugin_react.py` (875 lines, 19 test classes, 22 ACs) all fail with `ImportError`. Resolve on file creation. | T-010 | **Low** — self-contained test file; no upstream test regressions |
+| **CDN deduplication: `include_tailwind=True` + `css_framework="tailwind"` must produce exactly one Tailwind CDN script in `base.html`** | T-011 | **High** — AC-12b tests `base.content.count("cdn.tailwindcss.com") == 1`; a naive additive approach would double-add and pass all other ACs |
+| **AC-4 scanner applies to `htmx/*.py` — `base.py` exemption does NOT extend to plugin files** | T-011 | **High** — same constraint as T-008/T-009/T-010; `generate()` executor param must be untyped `Any`; `__init__.py` must import from `forge.domain` |
+| **`base.html` combinatorial template construction** — must simultaneously branch on 3 independent config flags (include_alpine, include_tailwind, css_framework) with CDN dedup guard; 12 config permutations | T-011 | **Medium** — build CDN tag list then join to avoid interleaved conditional template string issues |
+| **Config access via `.get("htmx", {})` not `plugin_config("htmx")` — AC-16/AC-17 test empty/missing config** | T-011 | **Medium** — established `_config(spec)` static helper pattern from T-008; crash on missing key would break 3 methods |
+| **`generate()` is no-op — must resist calling `executor.run()`** | T-011 | **Low** — AC-15 enforces `assert_not_called()`; clean pattern but counterintuitive after T-008/T-009 |
+| **`dependencies()` always `[]` — invariant across all configs** | T-011 | **Low** — parametrized AC-14 test checks 5 config variants; no cross-method consistency risk |
+
+### Detailed Chain: T-011 HTMX Plugin
+
+T-011 is the **fourth concrete bundled plugin** — a lighter-weight frontend (no Node.js scaffold, CDN-based). All upstream contracts are locked by existing tests; the codebase is implementation-ready. Unlike T-008/T-009/T-010, T-011 has zero conditional dependencies — `dependencies()` always returns `[]` and `generate()` is a no-op. The only branching is in `files()` for Alpine.js, Tailwind build tooling, and CSS framework CDN choice.
+
+```
+T-001 (domain) ──────────────────────────────────────┐
+  ProjectSpec, Question, GeneratedFile, QuestionType   │
+                                                         │
+T-002 (plugins/base.py) ──────────────────────────────┤
+  PluginBase (name, requires)                           ├──► T-011 HTMX Plugin
+  Configurable (questions)                               │      (2 files to create:
+  FileProvider (files, directories)                      │       __init__.py + plugin.py)
+  CommandRunner (generate)                               │
+  DependencyProvider (dependencies)                      │
+                                                         │
+T-005 (generation/registry + validation) ──────────────┤
+  PluginRegistry.discover() ──► entry_points            │
+  ValidationEngine.validate_plugin_config()              │
+                                                         │
+T08.1 (infrastructure/process_executor.py) ────────────┘
+  ProcessExecutor
+    │
+    ├──► T-006 Generation Stages — PluginExecutionEngine
+    │      (isinstance dispatch per mixin;
+    │       FileProvider → txn.stage_file / stage_directory;
+    │       DependencyProvider → txn.requirements;
+    │       CommandRunner → executor.run() — never called)
+    │
+    ├──► T-007 Orchestrator Facade
+    │      (registry.discover → instantiate HtmxPlugin;
+    │       headless path calls validate_plugin_config;
+    │       generate() passes txn + executor through stages)
+    │
+    ├──► tests/unit/test_plugin_htmx.py (643 lines, 21 ACs, 47 tests)
+    │      (46 fail test-first: ImportError — expected;
+    │       AC-18 already PASSES — inline Question construction)
+    │
+    └──► tests/unit/test_validation.py (AC-18 equivalent)
+           (inline Question construction for css_framework choice;
+            already PASS — no dependency on plugin files)
+```
+
+**Key chain insight:** T-011 is a **pure downstream consumer** — architecturally identical to T-008/T-009/T-010. It implements interfaces defined by T-002, registers via T-005 discovery, and is executed by T-006's PluginExecutionEngine. The implementation has zero impact on upstream files: no base class changes, no registry changes, no engine changes. Like T-009 and T-010, T-011 benefits from all upstream interfaces being hardened by T-008's implementation.
+
+**Design differences from prior plugins:**
+1. **CDN-based delivery, no scaffold** — `generate()` is a no-op (AC-15). HTMX scripts are loaded via CDN `<script>` tags in `base.html`. No `executor.run()` call.
+2. **Zero Python dependencies** — `dependencies()` always returns `[]` (AC-14). Backend plugin (FastAPI/Django) owns `requirements.txt`.
+3. **3 config keys** — `include_alpine` (boolean), `include_tailwind` (boolean), `css_framework` (choice: tailwind, bootstrap, none). Only 2 boolean flags + 1 ternary choice = 12 config permutations, but only `files()` branches — far simpler than T-010's 48 permutations across 3 methods.
+4. **CDN deduplication guard** — when both `include_tailwind=True` and `css_framework="tailwind"` are set, the Tailwind CDN must appear exactly once in `base.html`. AC-12b enforces `count == 1`.
+5. **HTML inline templates** — all file content is inline f-strings (HTML). No JSX `{}` escaping needed (unlike T-010's React plugin). No Jinja2 dependency in Forge — generated templates use Jinja2 syntax because they'll be served by the backend's template engine.
+
+**Files to create:**
+| File | Purpose | Constraints |
+|------|---------|-------------|
+| `src/forge/plugins/htmx/__init__.py` | Package init + re-export | Must `from forge.domain import ProjectSpec as _` (AC-4); must NOT import infra/ui/generation |
+| `src/forge/plugins/htmx/plugin.py` | HtmxPlugin (4 mixins, 5 methods) | Same AC-4 constraints; `executor` param must be untyped (`Any`); `_config(spec)` static helper matching prior plugin pattern; `generate()` is no-op; `dependencies()` always `[]` |
+
+**Test verification:**
+- 47 tests in `test_plugin_htmx.py` (643 lines, 21 ACs) → 46 fail with `ImportError` (expected); will auto-resolve to PASS on file creation
+- 1 AC-18 test already PASSES (inline `Question` construction, no module dependency)
+- AC-4 scanner in `test_plugin_base.py` → `rglob` picks up new `htmx/*.py` files automatically; must pass
+- 0 regressions expected in 166+ existing unit tests
