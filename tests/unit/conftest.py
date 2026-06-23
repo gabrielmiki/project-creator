@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from PySide6.QtWidgets import QApplication
 
 from forge.domain import GeneratedFile, ProjectSpec, Question
 from forge.infrastructure import ProcessExecutor
@@ -21,6 +23,13 @@ from tests.unit._shared import (
 )
 
 # ── Shared Fixtures ─────────────────────────────────────────────────
+
+
+@pytest.fixture(scope="session")
+def qapp() -> QApplication:
+    """Session-scoped QApplication for UI tests."""
+    app = QApplication.instance() or QApplication(sys.argv)
+    yield app
 
 
 @pytest.fixture

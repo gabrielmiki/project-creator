@@ -105,9 +105,19 @@ def _run_headless(args: list[str]) -> None:
 
 def _launch_gui() -> None:
     try:
-        from PySide6.QtWidgets import QApplication  # noqa: F401
+        import PySide6.QtWidgets  # noqa: F401
     except ImportError:
         print("PySide6 is required for GUI mode")
         sys.exit(1)
-    print("GUI mode not yet implemented")
-    sys.exit(0)
+
+    from forge.ui.app import create_application
+
+    registry = PluginRegistry()
+    registry.discover()
+
+    validation = ValidationEngine(registry)
+
+    orch = Orchestrator(registry, validation)
+
+    app = create_application(orch)
+    app.exec()
