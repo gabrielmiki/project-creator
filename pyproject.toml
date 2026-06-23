@@ -41,6 +41,9 @@ explicit_package_bases = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "gui: tests that require a QApplication and display",
+]
 
 [dependency-groups]
 dev = [

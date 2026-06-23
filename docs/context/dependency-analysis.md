@@ -59,7 +59,7 @@ Legend: ──► direct dependency     ~ ~ ~ ► transitive dependency
             │             (imports: TemplateDefinition, Question, ProjectSpec,
             │              DurationEstimate)
             │               │
-            │               ├─► [ui] T-012 QApplication + MainWindow
+            │               ├─► [ui] T-012 QApplication + MainWindow (TDD review ✅)
             │               ├─► [ui] T-013 GenerationWorker
             │               ├─► [ui] T-014 Wizard Screens 1-3
             │               │     (uses: ProjectSpec, TemplateDefinition, Question)
@@ -135,6 +135,13 @@ Architecture dependency notes:
         signature was changed during TDD review (Round 2) to accept `spec: ProjectSpec`,
         enabling conditional auth deps. All upstream interface changes are resolved and committed;
         the codebase is implementation-ready.
+    T-012 QApplication + MainWindow — first Qt/UI ticket establishing the QApplication lifecycle,
+        MainWindow shell, navigation API, and Qt test patterns. 233-line test-first file contract-locks
+        the entire API surface (12 ACs). Cross-ticket signal hazard: `qRegisterMetaType("GenerationResult")`
+        must be called in `ui/app.py` or MainWindow.__init__` for T-013's cross-thread `generation_completed`
+        signal, but T-012's own tests (all same-thread) don't expose this requirement. Screen classes are
+        registered as placeholder `QWidget` stubs — T-014/T-015 must replace them. `pytest-qt` not required
+        (test file uses native PySide6 `QSignalSpy`/`QTest`).
 ```
 
 ### Detailed Chain: T-002 PluginBase + Mixins
@@ -582,15 +589,20 @@ T08.1 (infrastructure/process_executor.py) ────────────�
 | `src/forge/__main__.py` | **CREATE (T-007)** | Entry point called via `python -m forge`; parses `--headless`, `spec.json`, `output_dir`; delegates to `app.main()`; does not construct core objects directly | `forge.app.main()` |
 
 ### UI Layer (T-012–T-015)
-| File | Domain dependency |
-|---|---|
-| `src/forge/ui/main_window.py` | Uses ProjectSpec (via Orchestrator) |
-| `src/forge/ui/workers.py` | Uses DurationEstimate, ProjectSpec |
-| `src/forge/ui/screens/template_selection.py` | Uses TemplateDefinition |
-| `src/forge/ui/screens/domain_definition.py` | Uses Domain |
-| `src/forge/ui/screens/stack_config.py` | Uses Question |
-| `src/forge/ui/screens/review_summary.py` | Uses ProjectSpec |
-| `src/forge/ui/screens/generation.py` | Uses DurationEstimate |
+| File | Action | Depends on | Created by |
+|---|---|---|---|
+| `src/forge/ui/__init__.py` | **CREATE** | Package init (currently missing, must exist for `forge.ui.app` imports) | T-012 |
+| `src/forge/ui/app.py` | **CREATE** | `create_application()` — QApplication bootstrap, style/icon, instantiates MainWindow, starts event loop; must `qRegisterMetaType("GenerationResult")` for T-013 cross-thread signals | T-012 |
+| `src/forge/ui/main_window.py` | **CREATE** | `MainWindow(QMainWindow)` with `QStackedWidget` + 5 placeholder screens + navigation footer; 233-line test-first contract (12 ACs) locked | T-012 |
+| `src/forge/ui/screens/__init__.py` | **CREATE** | Package init for screens subpackage (currently missing) | T-012 |
+| `tests/unit/test_main_window.py` | ✅ **Already exists (test-first)** | 233 lines, 12 ACs — all fail with `ImportError` (expected); will auto-resolve to PASS on file creation | T-016 (test-first) |
+| `src/forge/app.py` (_launch_gui) | **MODIFY** | Replace `_launch_gui()` stub with real bootstrap: construct `PluginRegistry` → `ValidationEngine` → `Orchestrator` → call `forge.ui.app.create_application(orch)` | T-012 |
+| `src/forge/ui/workers.py` | **CREATE (T-013)** | `GenerationWorker` + `QtProgressReporter`; bridges `ProgressReporter` protocol → PySide6 signals; runs `Orchestrator.generate()` on `QThread` | T-013 |
+| `src/forge/ui/screens/welcome.py` | **CREATE (T-014)** | `WelcomeScreen` — welcome + project name/author input; registered at stack index 0 | T-014 |
+| `src/forge/ui/screens/domain_selection.py` | **CREATE (T-014)** | `DomainSelectionScreen` — backend + frontend selection; registered at stack index 1 | T-014 |
+| `src/forge/ui/screens/configuration.py` | **CREATE (T-014)** | `ConfigurationScreen` — global + per-plugin config; registered at stack index 2 | T-014 |
+| `src/forge/ui/screens/review.py` | **CREATE (T-015)** | `ReviewScreen` — summary tree view + generate trigger; registered at stack index 3 | T-015 |
+| `src/forge/ui/screens/generation.py` | **CREATE (T-015)** | `GenerationScreen` — progress bar + status log; registered at stack index 4 | T-015 |
 
 ## Domains Models — API Surface Exposed
 
@@ -702,6 +714,15 @@ DurationEstimate(estimated_seconds, has_slow_steps, slow_step_details)
 | **Config access via `.get("htmx", {})` not `plugin_config("htmx")` — AC-16/AC-17 test empty/missing config** | T-011 | **Medium** — established `_config(spec)` static helper pattern from T-008; crash on missing key would break 3 methods |
 | **`generate()` is no-op — must resist calling `executor.run()`** | T-011 | **Low** — AC-15 enforces `assert_not_called()`; clean pattern but counterintuitive after T-008/T-009 |
 | **`dependencies()` always `[]` — invariant across all configs** | T-011 | **Low** — parametrized AC-14 test checks 5 config variants; no cross-method consistency risk |
+| **`qRegisterMetaType("GenerationResult")` — cross-thread signal registration required by T-013** | T-012→T-013 | **High** — T-012's own tests are all same-thread (AC-7 emits directly), so the bug is invisible until T-013 runs GenerationWorker on QThread at runtime; must be done in `ui/app.py` or `MainWindow.__init__` |
+| **`ProjectSpec` sourcing for `generation_requested` signal (AC-6)** — must construct a `ProjectSpec` instance at 3→4 transition; screen classes don't exist yet, so either MainWindow stores mutable spec or screens expose `get_spec()`. Test only checks `isinstance`, so a dummy works — but architecture decision affects T-014/T-015 | T-012 | **High** — design choice made now constrains T-014/T-015; wrong abstraction requires retrofitting later |
+| **Navigation button state matrix — 3 states (Disabled/Hidden/Shown) × 5 screens × 5 buttons** — 25 cells: `setEnabled` vs `setVisible` semantics are easy to invert in a conditional chain | T-012 | **Medium** — use lookup table rather than `if-elif` chain; AC-2 and AC-3 test specific cells |
+| **Placeholder screen registration (AC-1) — `QWidget` stubs now must be replaced by T-014/T-015** — 5 widgets registered in `MainWindow.__init__`; replacing them later requires changing the same constructor | T-012 | **Medium** — screen classes don't exist; stubs must be used but create a modification obligation for T-014/T-015 |
+| **`generation_completed = Signal(GenerationResult)` using @dataclass type** — PySide6 handles same-thread emission but some versions may have issues with non-QObject signal parameter types | T-012 | **Medium** — AC-7 test verifies direct emit works in current PySide6 version |
+| **`show_confirm` Escape handling (AC-11)** — `QMessageBox.question` with dialog close returns `QMessageBox.Escape`; must treat all non-`Yes` results as `False` | T-012 | **Low** — `return result == QMessageBox.Yes` handles all cases correctly |
+| **Button object names are contract-locked** — 5 object names (`previous_button`, `next_button`, `cancel_button`, `open_button`, `close_button`) must match exactly; any typo breaks AC-2, AC-3, AC-12 | T-012 | **Low** — simple string constants; easy to verify |
+| **`_launch_gui()` mirroring headless construction logic** — both headless and GUI paths construct `PluginRegistry` → `ValidationEngine` → `Orchestrator`; any `Orchestrator.__init__` signature change must update both paths simultaneously | T-012→T-007 | **Low** — natural consequence of shared facade; caught by compilation/mypy |
+| **`conftest.py` duplicate `qapp` fixture** — both `tests/unit/conftest.py` and `test_main_window.py` define session-scoped `qapp`; module-level overrides conftest but the duplicate is harmless | T-012 | **Low** — redundant but not harmful |
 
 ### Detailed Chain: T-011 HTMX Plugin
 
@@ -765,3 +786,54 @@ T08.1 (infrastructure/process_executor.py) ────────────�
 - 1 AC-18 test already PASSES (inline `Question` construction, no module dependency)
 - AC-4 scanner in `test_plugin_base.py` → `rglob` picks up new `htmx/*.py` files automatically; must pass
 - 0 regressions expected in 166+ existing unit tests
+
+### Detailed Chain: T-012 QApplication Bootstrap + MainWindow Shell
+
+T-012 is the **first GUI ticket** — it establishes the `QApplication` lifecycle, `MainWindow` shell, navigation infrastructure, and Qt test patterns that all subsequent UI tickets (T-013–T-015) depend on. Unlike the plugin tickets (T-008–T-011), T-012 creates new UI layer files and modifies an existing CLI-layer file (`app.py`).
+
+```
+T-001 (domain) ─────────────────────────────────────────┐
+  ProjectSpec (via Orchestrator, used in signals)         │
+                                                           │
+T-007 (orchestrator) ────────────────────────────────────┤
+  Orchestrator (constructor injection into MainWindow)     ├──► T-012 QApplication + MainWindow
+  GenerationResult (@dataclass, emitted via Qt signal)     │      │
+                                                           │      ├── Creates: ui/__init__.py
+T-005 (registry + validation) ───► T-007 ─────────────────┤      ├── Creates: ui/app.py
+  (indirect: Orchestrator construction in _launch_gui)     │      ├── Creates: ui/main_window.py
+                                                           │      ├── Creates: ui/screens/__init__.py
+                                                           │      ├── Modifies: src/forge/app.py (_launch_gui)
+                                                           │      └── Test-first: test_main_window.py (233 lines, 12 ACs)
+                                                           │
+                                                           ├──► T-013 GenerationWorker
+                                                           │      (consumes generation_requested signal from MainWindow;
+                                                           │       emits generation_completed to MainWindow;
+                                                           │       requires qRegisterMetaType for cross-thread signals)
+                                                           │
+                                                           ├──► T-014 Wizard Screens 1-3
+                                                           │      (registered as placeholder QWidget stubs in MainWindow.__init__;
+                                                           │       T-014 replaces stubs with real screen classes)
+                                                           │
+                                                           └──► T-015 Wizard Screens 4-5
+                                                                  (registered as placeholder QWidget stubs;
+                                                                   T-015 replaces stubs with real screen classes)
+```
+
+**Key chain insight:** T-012 is the **Qt foundation layer** — every GUI ticket after it depends on the `MainWindow` shell, navigation API (`navigate_to`, `next_screen`, `previous_screen`), and modal dialog patterns. Unlike T-007 (which coordinates generation logic) or T-006 (complex stage internals), T-012's risk is **cross-ticket signal contract** and **test infrastructure establishment**: the `qRegisterMetaType("GenerationResult")` call in `ui/app.py` is invisible to T-012's own tests (all same-thread) but is required for T-013's cross-thread `generation_completed` signal to work at runtime.
+
+**Files to create/modify:**
+| File | Action | Purpose | Constraints |
+|------|--------|---------|-------------|
+| `src/forge/ui/__init__.py` | **CREATE** | Package init (currently missing) | Must exist for `forge.ui.app` imports to resolve |
+| `src/forge/ui/app.py` | **CREATE** | QApplication bootstrap, style/icon; `create_application(orchestrator)` factory | Must call `qRegisterMetaType("GenerationResult")` for cross-thread signal; must return `QApplication` instance |
+| `src/forge/ui/main_window.py` | **CREATE** | `MainWindow(QMainWindow)` — QStackedWidget (5 screens), navigation footer, modal dialog helpers | 12 ACs locked by 233-line test-first file; window title `"Forge"`; 5 buttons with exact object names |
+| `src/forge/ui/screens/__init__.py` | **CREATE** | Package init for screens subpackage | Empty or placeholder stubs; screens created in T-014/T-015 |
+| `src/forge/app.py` | **MODIFY** | Replace `_launch_gui()` stub with real bootstrap | Must construct `PluginRegistry` + `ValidationEngine` + `Orchestrator` then call `forge.ui.app.create_application()`; `detect_display()` contract-locked at `"forge.app.detect_display"` |
+
+**Test verification:**
+- 233 lines in `test_main_window.py` (12 ACs, 12 test classes) → all fail with `ImportError` (expected); will auto-resolve to PASS on file creation
+- `tests/unit/conftest.py` already has session-scoped `qapp` fixture (line 28-32) — no change needed
+- All UI tests should be marked `@pytest.mark.gui` (per ticket spec)
+- 0 regressions expected in 166+ existing unit tests (no existing UI tests to break)
+
+**`pytest-qt` decision:** The ticket spec recommends adding `pytest-qt` to dev dependencies, but the test-first file (`test_main_window.py`) uses native PySide6 test utilities (`QSignalSpy`, `QTest`) directly — no `qtbot` fixture calls. Either add `pytest-qt` and migrate tests to use `qtbot`, or keep native PySide6 test utilities and skip the `pytest-qt` dependency. The test file as written does not require `pytest-qt`.
