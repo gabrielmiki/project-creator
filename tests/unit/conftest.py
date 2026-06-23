@@ -59,6 +59,18 @@ def empty_spec() -> ProjectSpec:
     return make_empty_spec()
 
 
+@pytest.fixture
+def mock_orchestrator() -> MagicMock:
+    from forge.generation.orchestrator import Orchestrator
+
+    orch: MagicMock = MagicMock(spec=Orchestrator)
+    orch.get_available_backends.return_value = []
+    orch.get_available_frontends.return_value = []
+    orch.get_global_questions.return_value = []
+    orch.get_domain_questions.return_value = {}
+    return orch
+
+
 # ── Conftest Plugin Classes (pre-existing) ──────────────────────────
 
 

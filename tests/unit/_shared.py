@@ -34,6 +34,12 @@ class MockTransaction:
     def add_checkpoint(self, paths: list[Path]) -> None:
         self.add_checkpoint_calls.append(paths)
 
+    def rollback(self) -> None:
+        pass
+
+    def commit(self) -> None:
+        pass
+
 
 class MockFilePlugin(PluginBase, FileProvider):
     name = "mock-file"

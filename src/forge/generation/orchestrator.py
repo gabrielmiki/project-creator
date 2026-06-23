@@ -125,6 +125,9 @@ class Orchestrator:
 
         try:
             for stage in stages:
+                if progress.should_cancel():
+                    txn.rollback()
+                    return GenerationResult(False, "Cancelled", None)
                 stage.run(spec, output_dir, txn, progress)
         except Exception as e:
             txn.rollback()
