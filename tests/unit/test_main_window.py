@@ -9,21 +9,11 @@ from PySide6.QtTest import QSignalSpy, QTest
 from PySide6.QtWidgets import QApplication, QMessageBox, QPushButton, QStackedWidget
 
 from forge.domain import ProjectSpec
-from forge.generation.orchestrator import GenerationResult, Orchestrator
+from forge.generation.orchestrator import GenerationResult
 
 # ====================================================================
 # Fixtures
 # ====================================================================
-
-
-@pytest.fixture
-def mock_orchestrator() -> MagicMock:
-    orch: MagicMock = MagicMock(spec=Orchestrator)
-    orch.get_available_backends.return_value = []
-    orch.get_available_frontends.return_value = []
-    orch.get_global_questions.return_value = []
-    orch.get_domain_questions.return_value = {}
-    return orch
 
 
 @pytest.fixture
