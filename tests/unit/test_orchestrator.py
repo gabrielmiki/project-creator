@@ -567,13 +567,9 @@ class TestHeadlessCLI:
 
     def test_no_display_no_headless_error(
         self,
-        tmp_path: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        spec_path = tmp_path / "spec.json"
-        spec_path.write_text("{}")
-        output_dir = tmp_path / "output"
-        full_args = ["forge", str(spec_path), str(output_dir)]
+        full_args = ["forge"]
 
         with patch.object(sys, "argv", full_args):
             with patch("forge.app.detect_display", return_value=False):

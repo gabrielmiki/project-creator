@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import sys
@@ -21,10 +22,19 @@ def detect_display() -> bool:
 
 
 def main() -> None:
-    args = list(sys.argv[1:])
+    parser = argparse.ArgumentParser(
+        description="Generate project structures from templates",
+    )
+    parser.add_argument(
+        "--headless",
+        nargs=2,
+        metavar=("SPEC", "OUTPUT_DIR"),
+        help="Run in headless mode with a spec JSON file and output directory",
+    )
+    parsed = parser.parse_args()
 
-    if args and args[0] == "--headless":
-        _run_headless(args[1:])
+    if parsed.headless:
+        _run_headless(Path(parsed.headless[0]), Path(parsed.headless[1]))
         return
 
     if not detect_display():
@@ -34,13 +44,7 @@ def main() -> None:
     _launch_gui()
 
 
-def _run_headless(args: list[str]) -> None:
-    if len(args) < 2:
-        print("Usage: python -m forge --headless <spec.json> <output_dir>")
-        sys.exit(1)
-
-    spec_path = Path(args[0])
-    output_dir = Path(args[1])
+def _run_headless(spec_path: Path, output_dir: Path) -> None:
 
     try:
         data = json.loads(spec_path.read_text())
