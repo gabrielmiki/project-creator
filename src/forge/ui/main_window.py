@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, Any
+
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -14,13 +16,20 @@ from PySide6.QtWidgets import (
 from forge.domain import ProjectSpec, TemplateDefinition
 from forge.generation.orchestrator import GenerationResult, Orchestrator
 
+if TYPE_CHECKING:
+    from forge.ui.screens.base import WizardScreen
+
 
 class MainWindow(QMainWindow):
     generation_requested = Signal(ProjectSpec)
     generation_completed = Signal(GenerationResult)
     cancelled = Signal()
 
-    def __init__(self, orchestrator: Orchestrator) -> None:
+    def __init__(
+        self,
+        orchestrator: Orchestrator,
+        screens: list[WizardScreen] | None = None,
+    ) -> None:
         super().__init__()
         self._orchestrator = orchestrator
         self._current_index = 0
@@ -34,9 +43,25 @@ class MainWindow(QMainWindow):
         self._stacked = QStackedWidget()
         layout.addWidget(self._stacked)
 
-        for _ in range(5):
-            page = QWidget()
-            self._stacked.addWidget(page)
+        if screens is None:
+            from forge.ui.screens.welcome_screen import WelcomeScreen
+            from forge.ui.screens.domain_selection_screen import DomainSelectionScreen
+            from forge.ui.screens.configuration_screen import ConfigurationScreen
+
+            screens = [
+                WelcomeScreen(),
+                DomainSelectionScreen(orchestrator),
+                ConfigurationScreen(orchestrator),
+                QWidget(),
+                QWidget(),
+            ]
+
+        for screen in screens:
+            self._stacked.addWidget(screen)
+
+        for screen in screens:
+            if hasattr(screen, "proceed_changed"):
+                screen.proceed_changed.connect(self._update_navigation_buttons)
 
         footer = QHBoxLayout()
         self._prev_btn = QPushButton("Previous")
@@ -64,27 +89,56 @@ class MainWindow(QMainWindow):
 
         self.navigate_to(0)
 
+    def _build_spec(self) -> ProjectSpec:
+        updates: dict[str, Any] = {}
+        for i in range(self._stacked.count()):
+            screen = self._stacked.widget(i)
+            if hasattr(screen, "get_spec_update"):
+                updates.update(screen.get_spec_update())
+
+        config = updates.get("config", {})
+        return ProjectSpec(
+            project_name=updates.get("project_name", ""),
+            template=TemplateDefinition(
+                id="custom",
+                display_name="Custom",
+                description="",
+                backend_id=updates.get("backend_id") or "",
+                frontend_id=updates.get("frontend_id"),
+            ),
+            domains=[],
+            config=config,
+        )
+
     def navigate_to(self, screen_index: int) -> None:
+        current = self._stacked.currentWidget()
+        if hasattr(current, "on_exit"):
+            current.on_exit()
+
         index = max(0, min(4, screen_index))
         self._current_index = index
         self._stacked.setCurrentIndex(index)
+
+        if index == 2:
+            domain_updates = self._stacked.widget(1).get_spec_update()
+            config_screen = self._stacked.widget(2)
+            config_screen.backend_id = domain_updates.get("backend_id") or ""
+            config_screen.frontend_id = domain_updates.get("frontend_id")
+
+        target = self._stacked.currentWidget()
+        if hasattr(target, "on_enter"):
+            target.on_enter()
+
         self._update_navigation_buttons()
 
     def next_screen(self) -> None:
         if self._current_index >= 4:
             return
+        current = self._stacked.currentWidget()
+        if hasattr(current, "can_proceed") and not current.can_proceed:
+            return
         if self._current_index == 3:
-            spec = ProjectSpec(
-                project_name="",
-                template=TemplateDefinition(
-                    id="",
-                    display_name="",
-                    description="",
-                    backend_id="",
-                ),
-                domains=[],
-                config={},
-            )
+            spec = self._build_spec()
             self.generation_requested.emit(spec)
         self.navigate_to(self._current_index + 1)
 
@@ -118,5 +172,11 @@ class MainWindow(QMainWindow):
                 visible, enabled = (index == 4), True
             else:
                 visible, enabled = True, True
+
+            if name == "next" and 0 <= index <= 3:
+                current = self._stacked.currentWidget()
+                if hasattr(current, "can_proceed"):
+                    enabled = current.can_proceed
+
             btn.setVisible(visible)
             btn.setEnabled(enabled)
