@@ -139,8 +139,9 @@ Architecture dependency notes:
         MainWindow shell, navigation API, and Qt test patterns. 233-line test-first file contract-locks
         the entire API surface (12 ACs). Cross-ticket signal hazard: `qRegisterMetaType("GenerationResult")`
         must be called in `ui/app.py` or MainWindow.__init__` for T-013's cross-thread `generation_completed`
-        signal, but T-012's own tests (all same-thread) don't expose this requirement. Screen classes are
-        registered as placeholder `QWidget` stubs — T-014/T-015 must replace them. `pytest-qt` not required
+        signal, but T-012's own tests (all same-thread) don't expose this requirement. Screens 0-2 are
+        replaced by T-014's real `WizardScreen` subclasses; screens 3-4 remain as `QWidget` stubs pending T-015.
+        `pytest-qt` not required
         (test file uses native PySide6 `QSignalSpy`/`QTest`).
 ```
 
@@ -594,15 +595,18 @@ T08.1 (infrastructure/process_executor.py) ────────────�
 | `src/forge/ui/__init__.py` | **CREATE** | Package init (currently missing, must exist for `forge.ui.app` imports) | T-012 |
 | `src/forge/ui/app.py` | **CREATE** | `create_application()` — QApplication bootstrap, style/icon, instantiates MainWindow, starts event loop; must `qRegisterMetaType("GenerationResult")` for T-013 cross-thread signals | T-012 |
 | `src/forge/ui/main_window.py` | **CREATE** | `MainWindow(QMainWindow)` with `QStackedWidget` + 5 placeholder screens + navigation footer; 233-line test-first contract (12 ACs) locked | T-012 |
-| `src/forge/ui/screens/__init__.py` | **CREATE** | Package init for screens subpackage (currently missing) | T-012 |
-| `tests/unit/test_main_window.py` | ✅ **Already exists (test-first)** | 233 lines, 12 ACs — all fail with `ImportError` (expected); will auto-resolve to PASS on file creation | T-016 (test-first) |
+| `src/forge/ui/screens/__init__.py` | ✅ **Already exists** | Package init for screens subpackage (empty) | T-012 |
+| `tests/unit/test_main_window.py` | ✅ **Already exists (test-first)** → **MODIFY (T-014)** | 233 lines, 12 ACs — `main_window` fixture updated to inject screens with `can_proceed=True` for AC-2 | T-016 (test-first) |
 | `src/forge/app.py` (_launch_gui) | **MODIFY** | Replace `_launch_gui()` stub with real bootstrap: construct `PluginRegistry` → `ValidationEngine` → `Orchestrator` → call `forge.ui.app.create_application(orch)` | T-012 |
 | `src/forge/ui/workers.py` | **CREATE (T-013)** | `GenerationWorker` + `QtProgressReporter`; bridges `ProgressReporter` protocol → PySide6 signals; runs `Orchestrator.generate()` on `QThread` | T-013 |
-| `src/forge/ui/screens/welcome.py` | **CREATE (T-014)** | `WelcomeScreen` — welcome + project name/author input; registered at stack index 0 | T-014 |
-| `src/forge/ui/screens/domain_selection.py` | **CREATE (T-014)** | `DomainSelectionScreen` — backend + frontend selection; registered at stack index 1 | T-014 |
-| `src/forge/ui/screens/configuration.py` | **CREATE (T-014)** | `ConfigurationScreen` — global + per-plugin config; registered at stack index 2 | T-014 |
+| `src/forge/ui/screens/base.py` | **CREATE (T-014)** | `WizardScreen` base class — `proceed_changed` Signal, `can_proceed`, `can_go_back`, `on_enter`/`on_exit` lifecycle hooks, `validate()`, `get_spec_update()` | T-014 |
+| `src/forge/ui/screens/welcome_screen.py` | **CREATE (T-014)** | `WelcomeScreen(WizardScreen)` — project name QLineEdit; `can_proceed=True` when name non-empty; registered at stack index 0 | T-014 |
+| `src/forge/ui/screens/domain_selection_screen.py` | **CREATE (T-014)** | `DomainSelectionScreen(WizardScreen)` — backend + frontend QListWidgets; queries orchestrator on `on_enter()`; registered at stack index 1 | T-014 |
+| `src/forge/ui/screens/configuration_screen.py` | **CREATE (T-014)** | `ConfigurationScreen(WizardScreen)` — dynamic form from `Question` objects; 5 widget type mappings; per-field validation labels; QGroupBox grouping; registered at stack index 2 | T-014 |
+| `src/forge/ui/main_window.py` | **CREATE (T-012)** → **MODIFY (T-014)** | Accept `screens` parameter, replace 5 stubs with injectable screen list, wire `proceed_changed` signals, add `_build_spec()` for ProjectSpec assembly, cross-screen data injection in `navigate_to()`, `can_proceed` guard in `next_screen()` | T-012 |
 | `src/forge/ui/screens/review.py` | **CREATE (T-015)** | `ReviewScreen` — summary tree view + generate trigger; registered at stack index 3 | T-015 |
 | `src/forge/ui/screens/generation.py` | **CREATE (T-015)** | `GenerationScreen` — progress bar + status log; registered at stack index 4 | T-015 |
+| `tests/unit/test_wizard_screens.py` | **CREATE (T-014)** | Unit tests for WizardScreen base class + WelcomeScreen + DomainSelectionScreen + ConfigurationScreen + MainWindow integration; uses existing qapp/mock_orchestrator fixtures | T-014 |
 
 ## Domains Models — API Surface Exposed
 
@@ -723,6 +727,15 @@ DurationEstimate(estimated_seconds, has_slow_steps, slow_step_details)
 | **Button object names are contract-locked** — 5 object names (`previous_button`, `next_button`, `cancel_button`, `open_button`, `close_button`) must match exactly; any typo breaks AC-2, AC-3, AC-12 | T-012 | **Low** — simple string constants; easy to verify |
 | **`_launch_gui()` mirroring headless construction logic** — both headless and GUI paths construct `PluginRegistry` → `ValidationEngine` → `Orchestrator`; any `Orchestrator.__init__` signature change must update both paths simultaneously | T-012→T-007 | **Low** — natural consequence of shared facade; caught by compilation/mypy |
 | **`conftest.py` duplicate `qapp` fixture** — both `tests/unit/conftest.py` and `test_main_window.py` define session-scoped `qapp`; module-level overrides conftest but the duplicate is harmless | T-012 | **Low** — redundant but not harmful |
+| **ConfigurationScreen — dynamic form rendering (5 widget types, validation, grouping)** — must map all 5 `QuestionType` values to correct Qt widgets, create per-field validation `QLabel`s that toggle visibility, group by `Question.group` using `QGroupBox`, handle unknown types gracefully, and collect values with correct Python types (MULTI_SELECT → `list[str]`) in `get_spec_update()`. Form must be rebuilt on every `on_enter()` (questions differ per backend/frontend) — must clean up old widgets to avoid stale signal connections. | T-014 | **High** — most complex new UI code; 5 widget mappings + validation + grouping + dynamic rebuild |
+| **MainWindow constructor refactoring — `screens` parameter + default construction** — adding `screens: list[WizardScreen] \| None = None` changes constructor contract. Default screen construction (`WelcomeScreen`, `DomainSelectionScreen(orchestrator)`, `ConfigurationScreen(orchestrator)`, `QWidget()`, `QWidget()`) needs `self._orchestrator` set first. `proceed_changed` signals must be connected in a loop — must not close over loop variable incorrectly. Existing `main_window` test fixture calls `MainWindow(orchestrator=mock_orchestrator)` — still works via default, but triggers real screen construction inside `__init__`. | T-014 | **High** — constructor API change affects existing test fixture; order of operations in `__init__` matters |
+| **Cross-screen data injection in `navigate_to()`** — `navigate_to(2)` reads `backend_id`/`frontend_id` from screen 1 (DomainSelectionScreen) via `get_spec_update()` and writes them as instance attributes onto screen 2 (ConfigurationScreen) before calling `on_enter()`. Uses positional index coupling (`self._stacked.widget(1)`, `self._stacked.widget(2)`) — fragile if screen order changes. No `isinstance` guard against wrong widget types at those positions. | T-014 | **Medium** — positional index coupling; T-015 screen insertion would silently break |
+| **Existing test fixture migration for AC-2** — `main_window` fixture in `test_main_window.py` must inject screens with `can_proceed=True` because `WelcomeScreen` defaults to `can_proceed=False`. Creates import dependency on screen modules from test file. AC-1 (`stacked.count() == 5`) requires exactly 5 widgets. AC-6 (`_build_spec()` emission) must handle `QWidget` stubs gracefully (no `get_spec_update`). AC-8/AC-10 clamping must still work with real WizardScreen instances. | T-014 | **Medium** — fixture creates dependency chain on screen modules; subtle interaction with 3 other ACs |
+| **ConfigurationScreen validation timing — `can_proceed` → `proceed_changed` → `_update_navigation_buttons()`** — every widget's value-changed signal (`textChanged`, `toggled`, `currentIndexChanged`, `itemSelectionChanged`, `valueChanged`) must connect to a shared handler that calls `validate()`, sets `can_proceed`, emits `proceed_changed(bool)`, and updates per-field error labels. If validation is slow (unlikely but possible with many fields), typing would lag. | T-014 | **Medium** — signal chain correctness; 5 different widget signals to wire |
+| **`_build_spec()` assembly correctness** — iterates all stacked widgets at 3→4 transition, calls `get_spec_update()` on those that have it (guarded by `hasattr`), merges dicts, constructs `ProjectSpec` with `TemplateDefinition(id="custom", ...)`. `TemplateDefinition.backend_id` must be `str` (not `str \| None` — `""` for no backend). Edge cases: empty project_name, no config, no backend selected. | T-014 | **Medium** — dict merge + `ProjectSpec` constructor must match exactly; type coercion on backend_id |
+| **DomainSelectionScreen — empty plugins edge case (AC-8)** — when no available backends, `can_proceed` must be `True` (zero-domains mode). Must be intentionally handled with a branch: `if not backends: self.can_proceed = True`. Orchestrator `get_available_frontends()` currently returns hardcoded `[]` — frontend list will always be empty in current state. | T-014 | **Medium** — edge case must be intentionally handled; upstream limitation surfaces in UI |
+| **WizardScreen `proceed_changed` Signal declaration** — must be class-level `Signal(bool)` (not instance attribute). Subclasses update `can_proceed` and emit signal. Must be connected in `MainWindow.__init__` via `screen.proceed_changed.connect(lambda: self._update_navigation_buttons())`. Lambda captures `self` correctly but does not need to capture `screen`. | T-014 | **Low** — standard PySide6 signal pattern; easy to get right by following existing Signal pattern |
+| **ConfigurationScreen — unknown `QuestionType` graceful handling** — must log warning and skip widget creation for unrecognized types. Must not crash, must not render a broken widget. | T-014 | **Low** — well-scoped edge case; guard with `if not hasattr()` or dict lookup |
 
 ### Detailed Chain: T-011 HTMX Plugin
 
@@ -837,3 +850,52 @@ T-005 (registry + validation) ───► T-007 ──────────�
 - 0 regressions expected in 166+ existing unit tests (no existing UI tests to break)
 
 **`pytest-qt` decision:** The ticket spec recommends adding `pytest-qt` to dev dependencies, but the test-first file (`test_main_window.py`) uses native PySide6 test utilities (`QSignalSpy`, `QTest`) directly — no `qtbot` fixture calls. Either add `pytest-qt` and migrate tests to use `qtbot`, or keep native PySide6 test utilities and skip the `pytest-qt` dependency. The test file as written does not require `pytest-qt`.
+
+### Detailed Chain: T-014 Wizard Screens 1–3
+
+T-014 is the **second GUI ticket** — it creates the first 3 wizard screens and a `WizardScreen` base class, then wires them into `MainWindow`. It is a pure UI-layer ticket consuming already-stable upstream contracts. Unlike T-012 (which established the Qt foundation), T-014 has zero impact on generation, plugins, infrastructure, or domain layers.
+
+```
+T-001 (domain) ──────────────────────────────────────────┐
+  Question, QuestionType, ValidationRule                   │
+  ProjectSpec, TemplateDefinition                          │
+                                                           │
+T-007 (orchestrator) ─────────────────────────────────────┤
+  get_available_backends/frontends() → screen 1 lists      ├──► T-014 Wizard Screens 1-3
+  get_global_questions() + get_domain_questions() → cfg    │      │
+                                                           │      ├── Creates:
+T-012 (MainWindow shell) ─────────────────────────────────┤      │   screens/base.py (WizardScreen)
+  navigate_to(), next_screen(), _update_navigation_btns    │      │   screens/welcome_screen.py
+  QStackedWidget (5 pages, 3 now real, 2 stubs)            │      │   screens/domain_selection_screen.py
+                                                           │      │   screens/configuration_screen.py
+                                                           │      │   tests/unit/test_wizard_screens.py
+                                                           │      │
+                                                           │      ├── Modifies:
+                                                           │      │   ui/main_window.py (constructor, _build_spec,
+                                                           │      │     navigate_to cross-screen injection, can_proceed guard)
+                                                           │      │   tests/unit/test_main_window.py (fixture)
+                                                           │      │
+                                                           │      └── Consumed by: T-015 (screens 4-5, deferred)
+```
+
+**Key chain insight:** T-014 is a **UI-local consumer** — it depends on 3 upstream layers (domain models, orchestrator query methods, MainWindow shell) but affects only UI-layer files. No changes propagate to generation/plugins/infrastructure. This makes it the safest ticket in the UI phase: upstream contracts are all hardened by existing tests, and downstream tickets (T-015) depend on the new screen classes at the UI level only.
+
+**Architecture pattern:** The `_build_spec()` method in `MainWindow` uses `hasattr` duck-typing to collect spec updates from all stacked widgets. Screen 3 and 4 remain `QWidget` stubs (no `get_spec_update`), so they silently contribute nothing. This is intentional — T-015 will replace them with real `WizardScreen` subclasses that contribute `get_spec_update()`.
+
+**Upstream gap discovered:** `PluginRegistry.get_available_backends()` returns **all** discovered plugins (`registry.py:99-100`) — no frontend/backend classification. `get_available_frontends()` returns hardcoded `[]` (`registry.py:102-103`). The DomainSelectionScreen will show all plugins as backends and never show frontends. The ticket spec defers this ("TemplateDefinition-level filtering is deferred"), but the UX feels incomplete until resolved.
+
+**Files to create/modify:**
+| File | Action | Purpose | Constraints |
+|------|--------|---------|-------------|
+| `src/forge/ui/screens/base.py` | **CREATE** | `WizardScreen(QWidget)` — base class with `proceed_changed = Signal(bool)`, lifecycle hooks (`on_enter`, `on_exit`), validation interface (`validate()` → `list[str]`), spec interface (`get_spec_update()` → `dict`) | Must be a proper `QWidget` subclass; signals must be class-level; all hooks are no-ops in base |
+| `src/forge/ui/screens/welcome_screen.py` | **CREATE** | `WelcomeScreen(WizardScreen)` — single QLineEdit for project name; `can_proceed` tied to non-empty input; no orchestrator calls | Purely local UI state; simplest screen |
+| `src/forge/ui/screens/domain_selection_screen.py` | **CREATE** | `DomainSelectionScreen(WizardScreen)` — two QListWidgets (backends, frontends); populated via `orchestrator.get_available_backends()` + `get_available_frontends()` on `on_enter()`; zero-domains mode when no plugins | Accepts `orchestrator` in constructor; stores it as `self._orchestrator` |
+| `src/forge/ui/screens/configuration_screen.py` | **CREATE** | `ConfigurationScreen(WizardScreen)` — most complex screen; dynamic form rendering from `Question` objects; 5 QuestionType→Qt widget mappings; per-field validation QLabels; QGroupBox grouping; cross-plugin question aggregation | Accepts `orchestrator` in constructor; backend_id/frontend_id set as instance attributes by MainWindow before on_enter(); form rebuilt on every on_enter() |
+| `src/forge/ui/main_window.py` | **MODIFY** | Accept `screens: list[WizardScreen] \| None = None` in constructor; replace fixed stubs with passed-in screen list; connect `proceed_changed` signals; add `_build_spec()` method; modify `next_screen()` with `can_proceed` guard; modify `navigate_to()` with cross-screen data injection + lifecycle hooks; extend `_update_navigation_buttons()` with `can_proceed` check | Must preserve backward compatibility (existing callers without screens argument); constructor init order: `self._orchestrator` before default screen creation |
+| `tests/unit/test_wizard_screens.py` | **CREATE** | Unit tests for all 3 screens + WizardScreen base class + MainWindow integration (AC-21, AC-22, AC-23); uses existing `qapp` + `mock_orchestrator` fixtures from `conftest.py` | All tests marked `@pytest.mark.gui`; mock orchestrator overrides for non-empty scenarios; lazy imports inside test bodies |
+| `tests/unit/test_main_window.py` | **MODIFY** | Update `main_window` fixture to inject screens list with `WelcomeScreen(can_proceed=True)` to maintain AC-2 (Next button enabled at screen 0) | Screens list: 1 real WelcomeScreen + 4 QWidget stubs; must preserve `stacked.count() == 5` for AC-1 |
+
+**Test verification:**
+- AC-1 through AC-12 in `test_main_window.py` — must all still PASS (fixture migrated for AC-2)
+- AC-1–AC-23 in `test_wizard_screens.py` — new tests, all must PASS
+- 0 regressions expected in 166+ existing unit tests (no new imports from existing test files)

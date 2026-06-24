@@ -19,8 +19,16 @@ from forge.generation.orchestrator import GenerationResult
 @pytest.fixture
 def main_window(qapp: QApplication, mock_orchestrator: MagicMock) -> object:
     from forge.ui.main_window import MainWindow
+    from forge.ui.screens.welcome_screen import WelcomeScreen
+    from PySide6.QtWidgets import QWidget
 
-    window = MainWindow(orchestrator=mock_orchestrator)
+    screens = [WelcomeScreen()]
+    for _ in range(4):
+        screens.append(QWidget())
+
+    screens[0].can_proceed = True
+
+    window = MainWindow(orchestrator=mock_orchestrator, screens=screens)
     window.show()
     yield window
     window.close()
