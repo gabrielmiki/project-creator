@@ -7,15 +7,23 @@ from forge.generation.orchestrator import Orchestrator
 from forge.ui.main_window import MainWindow
 
 
-def create_application(orchestrator: Orchestrator) -> QApplication:
-    instance = QCoreApplication.instance()
-    if isinstance(instance, QApplication):
-        app = instance
-    else:
-        app = QApplication([])
+def create_application(
+    orchestrator: Orchestrator,
+    app: QApplication | None = None,
+) -> QApplication:
+    if app is None:
+        instance = QCoreApplication.instance()
+        if isinstance(instance, QApplication):
+            app = instance
+        else:
+            app = QApplication([])
+        app.setStyle("Fusion")
     app.setApplicationName("Forge")
 
     window = MainWindow(orchestrator)
     window.show()
+    window.raise_()
+    window.activateWindow()
+    app._main_window = window
 
     return app

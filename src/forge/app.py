@@ -109,10 +109,14 @@ def _run_headless(spec_path: Path, output_dir: Path) -> None:
 
 def _launch_gui() -> None:
     try:
-        import PySide6.QtWidgets  # noqa: F401
+        from PySide6.QtWidgets import QApplication
+
+        app = QApplication([])
     except ImportError:
         print("PySide6 is required for GUI mode")
         sys.exit(1)
+
+    app.setStyle("Fusion")
 
     from forge.ui.app import create_application
 
@@ -123,5 +127,5 @@ def _launch_gui() -> None:
 
     orch = Orchestrator(registry, validation)
 
-    app = create_application(orch)
+    create_application(orch, app)
     app.exec()
