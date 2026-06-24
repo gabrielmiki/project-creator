@@ -545,13 +545,15 @@ class TestMainWindowIntegration:
         from forge.ui.screens.welcome_screen import WelcomeScreen
         from forge.ui.screens.domain_selection_screen import DomainSelectionScreen
         from forge.ui.screens.configuration_screen import ConfigurationScreen
+        from forge.ui.screens.review_screen import ReviewScreen
+        from forge.ui.screens.generation_screen import GenerationScreen
 
         screens = [
             WelcomeScreen(),
             DomainSelectionScreen(mock_orchestrator),
             ConfigurationScreen(mock_orchestrator),
-            QStackedWidget(),
-            QStackedWidget(),
+            ReviewScreen(mock_orchestrator),
+            GenerationScreen(),
         ]
 
         window = MainWindow(orchestrator=mock_orchestrator, screens=screens)
@@ -577,13 +579,15 @@ class TestMainWindowIntegration:
         from forge.ui.screens.welcome_screen import WelcomeScreen
         from forge.ui.screens.domain_selection_screen import DomainSelectionScreen
         from forge.ui.screens.configuration_screen import ConfigurationScreen
+        from forge.ui.screens.review_screen import ReviewScreen
+        from forge.ui.screens.generation_screen import GenerationScreen
 
         screens = [
             WelcomeScreen(),
             DomainSelectionScreen(mock_orchestrator),
             ConfigurationScreen(mock_orchestrator),
-            QStackedWidget(),
-            QStackedWidget(),
+            ReviewScreen(mock_orchestrator),
+            GenerationScreen(),
         ]
 
         window = MainWindow(orchestrator=mock_orchestrator, screens=screens)

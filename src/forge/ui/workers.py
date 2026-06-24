@@ -61,6 +61,7 @@ class GenerationWorker(QObject):
         output_dir: Path,
         txn: GenerationTransaction | None = None,
         progress: QtProgressReporter | None = None,
+        overwrite_confirmed: bool = False,
     ) -> None:
         super().__init__()
         self._orchestrator = orchestrator
@@ -69,6 +70,7 @@ class GenerationWorker(QObject):
         self._txn = txn
         self._reporter = progress if progress is not None else self._create_progress()
         self._finished = False
+        self._overwrite_confirmed = overwrite_confirmed
 
     @Slot()
     def run(self) -> None:
@@ -82,6 +84,7 @@ class GenerationWorker(QObject):
                 self._output_dir,
                 txn,
                 self._reporter,
+                overwrite_confirmed=self._overwrite_confirmed,
             )
         except Exception as e:
             txn.rollback()

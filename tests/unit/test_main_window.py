@@ -20,13 +20,23 @@ from forge.generation.orchestrator import GenerationResult
 def main_window(qapp: QApplication, mock_orchestrator: MagicMock) -> object:
     from forge.ui.main_window import MainWindow
     from forge.ui.screens.welcome_screen import WelcomeScreen
+    from forge.ui.screens.review_screen import ReviewScreen
+    from forge.ui.screens.generation_screen import GenerationScreen
     from PySide6.QtWidgets import QWidget
 
     screens = [WelcomeScreen()]
-    for _ in range(4):
+    for _ in range(2):
         screens.append(QWidget())
+    screens.append(ReviewScreen(mock_orchestrator))
+    screens.append(GenerationScreen())
 
     screens[0].can_proceed = True
+
+    from forge.domain import DurationEstimate
+
+    mock_orchestrator.estimate_duration.return_value = DurationEstimate(
+        estimated_seconds=5, has_slow_steps=False, slow_step_details=[],
+    )
 
     window = MainWindow(orchestrator=mock_orchestrator, screens=screens)
     window.show()
@@ -142,7 +152,15 @@ class TestAC5_ShowConfirm:
 
 @pytest.mark.gui
 class TestAC6_GenerationRequestedSignal:
-    def test_generation_requested_emitted_on_next_from_screen_3(self, main_window: object) -> None:
+    def test_generation_requested_emitted_on_next_from_screen_3(
+        self, main_window: object, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from pathlib import Path
+
+        monkeypatch.setattr(Path, "cwd", lambda: Path("/tmp/test"))
+        monkeypatch.setattr(Path, "exists", lambda _: False)
+        monkeypatch.setattr("PySide6.QtCore.QThread.start", lambda self: None)
+
         main_window.navigate_to(3)
         spy = QSignalSpy(main_window.generation_requested)
         main_window.next_screen()
