@@ -96,3 +96,75 @@ def txn(temp_dir: Path):
     output = temp_dir / "output"
     output.mkdir(exist_ok=True)
     return GenerationTransaction(output)
+
+
+# ── T-017 Pipeline Fixtures ──────────────────────────────────────────
+
+
+@pytest.fixture(scope="module")
+def pipeline_registry():
+    """Module-scoped real registry. Named pipeline_registry to avoid
+    collision with test_validation.py's module-scoped real_registry."""
+    from forge.generation.registry import PluginRegistry
+
+    reg = PluginRegistry()
+    reg.discover()
+    return reg
+
+
+@pytest.fixture
+def validation(pipeline_registry) -> object:
+    from forge.generation.validation import ValidationEngine
+
+    return ValidationEngine(pipeline_registry)
+
+
+@pytest.fixture
+def mock_executor():
+    """Mock ProcessExecutor — avoids real uv add subprocess calls
+    during integration tests."""
+    from unittest.mock import MagicMock
+
+    return MagicMock()
+
+
+@pytest.fixture
+def progress():
+    from forge.generation.progress import MockProgressReporter
+
+    return MockProgressReporter()
+
+
+@pytest.fixture
+def orchestrator(pipeline_registry, validation, mock_executor):
+    from forge.generation.orchestrator import Orchestrator
+
+    return Orchestrator(pipeline_registry, validation, executor=mock_executor)
+
+
+@pytest.fixture
+def fastapi_spec(spec_factory):
+    spec = spec_factory(backend_id="fastapi")
+    spec.config = {"fastapi": {}}
+    return spec
+
+
+@pytest.fixture
+def cli_spec_json(temp_dir: Path) -> Path:
+    import json
+
+    spec = {
+        "project_name": "test-project",
+        "template": {
+            "id": "fastapi-only",
+            "display_name": "FastAPI Only",
+            "description": "",
+            "backend_id": "fastapi",
+            "frontend_id": None,
+        },
+        "domains": [{"name": "users"}],
+        "config": {"fastapi": {"orm": "sqlalchemy", "auth": False, "include_alembic": False}},
+    }
+    path = temp_dir / "spec.json"
+    path.write_text(json.dumps(spec))
+    return path
