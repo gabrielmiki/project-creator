@@ -1,0 +1,239 @@
+{
+  "ac_validation": [
+    {
+      "criterion": "AC-01",
+      "text": "Given a ReviewScreen(orchestrator) with ProjectSpec having backend_id=\"fastapi\" and frontend_id=\"react\", when on_enter() is called, then the tree view displays the display name \"FastAPI\" (resolved via orchestrator.get_available_backends()), the display name \"React\" (resolved via orchestrator.get_available_frontends()), and an estimated duration from orchestrator.estimate_duration().",
+      "testable": true,
+      "issues": [
+        "Widget type unspecified: 'tree view' could be QTreeWidget or QTreeView. Tests need a concrete type/objectName to findChild().",
+        "Does not specify what happens when plugin_id is not found in get_available_*() (edge case: _resolve_display_name fallback to raw ID)."
+      ],
+      "suggested_fix": "Specify: 'the QTreeWidget (objectName=\"review_tree\") contains top-level items for Backend (displaying \"FastAPI\"), Frontend (displaying \"React\"), and Estimated duration (displaying from estimate_duration()).'"
+    },
+    {
+      "criterion": "AC-02",
+      "text": "Given a ReviewScreen(orchestrator) where orchestrator.estimate_duration() returns DurationEstimate(estimated_seconds=15, has_slow_steps=True, slow_step_details=[\"npm install\"]), when on_enter() is called, then a red QLabel with text containing \"Warning: Estimated duration exceeds 10s\" and the slow step details are visible.",
+      "testable": true,
+      "issues": [
+        "Red QLabel identification: need objectName (e.g., \"duration_warning_label\") or other mechanism for tests to reliably locate the warning widget without ambiguity.",
+        "\"text containing\" is acceptable but precise expected text is preferred."
+      ],
+      "suggested_fix": "Add: 'The warning label has objectName=\"duration_warning_label\", styleSheet containing \"color: red\", and text() matches r\"Warning.*10s.*npm install\".'"
+    },
+    {
+      "criterion": "AC-03",
+      "text": "Given a GenerationScreen with a worker injected via set_worker(), when the worker emits progress.emit(\"PluginExecution\", 3), then the stage QLabel text is \"PluginExecution\" and the QProgressBar maximum is 3.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-04",
+      "text": "Given a GenerationScreen with a worker injected, when the worker emits log.emit(\"Creating output dir\", \"info\"), then QPlainTextEdit.toPlainText() contains the string \"Creating output dir\".",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-05",
+      "text": "Given a GenerationScreen with a worker injected, when the worker emits finished.emit(GenerationResult(success=True, error=None, output_path=Path(\"/tmp/out\"))), then the Cancel button is hidden, and the \"Open Project\" and \"Close\" buttons are visible and enabled.",
+      "testable": false,
+      "issues": [
+        "BLOCKING: The Cancel/Open/Close buttons are owned by MainWindow, not GenerationScreen. GenerationScreen does not control their visibility.",
+        "BLOCKING: MainWindow._update_navigation_buttons() unconditionally shows Cancel/Open/Close at index 4. There is no mechanism to transition to 'finished' state (hide Cancel, show Open+Close).",
+        "BLOCKING: The Open button (_open_btn) has no click handler connected. The Close button (_close_btn) has no click handler connected.",
+        "No documented signal or callback for GenerationScreen to communicate 'generation finished' button state changes to MainWindow."
+      ],
+      "suggested_fix": "Either: (a) Add generation state tracking in MainWindow (e.g., self._generation_finished flag) and update _update_navigation_buttons() to check it, or (b) Have MainWindow._on_generation_finished() emit a signal or call _update_navigation_buttons() with result-aware visibility. Document which approach. Also document Open/Close button click handlers."
+    },
+    {
+      "criterion": "AC-06",
+      "text": "Given a GenerationScreen with a worker injected, when the worker emits error.emit(\"Generation failed at stage PluginExecution\"), then the log widget contains a red-formatted error line, a \"Close\" button is visible, and the Cancel button is hidden (generation ended).",
+      "testable": true,
+      "issues": [
+        "Same Cancel/Close button ownership issue as AC-05 — GenerationScreen does not own these buttons.",
+        "If MainWindow handles error via _on_generation_error(), the handler would call _update_navigation_buttons(), but there's no error-state-aware button logic documented."
+      ],
+      "suggested_fix": "Document the button state management flow for error cases alongside the success flow fix for AC-05."
+    },
+    {
+      "criterion": "AC-07",
+      "text": "Given a MainWindow at screen index 3 (ReviewScreen), when next_screen() is called and the output directory does not exist, then the confirm dialog is skipped and navigation proceeds to index 4 (GenerationScreen).",
+      "testable": true,
+      "issues": [
+        "Requires Path.exists() mock to return False. Standard monkeypatch pattern works.",
+        "After navigation, _create_generation_worker() creates a real QThread and starts it. Tests must either mock _create_generation_worker() or handle thread lifecycle cleanup."
+      ],
+      "suggested_fix": "Document the thread lifecycle strategy for this test (e.g., 'mock _create_generation_worker to prevent thread creation, or patch QThread.start to be a no-op')."
+    },
+    {
+      "criterion": "AC-08",
+      "text": "Given a MainWindow at screen index 3, when next_screen() is called, the output directory exists, and show_confirm returns QMessageBox.StandardButton.Yes, then navigation proceeds to index 4 and the GenerationWorker is created with overwrite_confirmed=True.",
+      "testable": true,
+      "issues": [
+        "Same thread lifecycle concern as AC-07."
+      ],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-09",
+      "text": "Given a MainWindow at screen index 3, when next_screen() is called, the output directory exists, and show_confirm returns QMessageBox.StandardButton.No, then the user stays at index 3 (ReviewScreen) and no worker is created.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-10",
+      "text": "Given a MainWindow at screen index 3, when next_screen() is called and checking the output directory raises an exception, then show_error is called with the error message and the user stays at index 3.",
+      "testable": false,
+      "issues": [
+        "The next_screen() code sample does NOT wrap the output_dir.exists() check in a try/except block. The overwrite confirm flow description (section 'Overwrite confirm flow') describes this case but the code does not implement it.",
+        "Without a try/except around the exists() call (or _get_output_dir call), the exception propagates unhandled and never reaches show_error()."
+      ],
+      "suggested_fix": "Update the next_screen() code sample to wrap output_dir determination and exists() check in try/except Exception, calling show_error() and returning in the except block."
+    },
+    {
+      "criterion": "AC-11",
+      "text": "Given a GenerationScreen with a worker injected via set_worker(), when on_enter() is called, then the screen connects to the worker's progress, log, error, and finished signals.",
+      "testable": true,
+      "issues": [
+        "This AC is implicitly covered by AC-03/04/05/06 (which verify each signal's behavior). It is testable independently but somewhat redundant.",
+        "Direct verification of 'signal connections established' requires introspection or proxy pattern. The common approach is to emit signals through the worker and verify side effects (which is what AC-03-06 do)."
+      ],
+      "suggested_fix": "Consider marking AC-11 as 'implicitly verified by AC-03/04/05/06' to avoid testing the same thing twice. Or make it explicit: 'worker.progress.connect is called at least once' verified via spy."
+    },
+    {
+      "criterion": "AC-12",
+      "text": "Given a GenerationScreen with a worker injected, when on_exit() is called while generation is running (worker not finished), then worker.cancel() is called.",
+      "testable": true,
+      "issues": [
+        "MISSING: GenerationScreen on_exit() override is not shown in the API spec. The base class WizardScreen.on_exit() is a no-op. GenerationScreen must override it.",
+        "METADATA: GenerationScreen needs an _is_generating flag (referenced as is_generating in navigate_to() injection but not defined in API spec) to know whether generation is running."
+      ],
+      "suggested_fix": "Add to GenerationScreen API spec: an on_exit() override that calls self._worker.cancel() if self._is_generating is True. Also document _is_generating as a boolean attribute set True in on_enter() and False when finished/error is received."
+    },
+    {
+      "criterion": "AC-13",
+      "text": "Given a GenerationScreen without a worker (idle state), when on_enter() is called, then the progress bar shows 0%, the stage label shows \"Ready\", and the log widget is empty.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-14",
+      "text": "Given a GenerationScreen at screen index 4 during active generation, when the user clicks the Cancel button, then worker.cancel() is called and the Cancel button becomes disabled.",
+      "testable": true,
+      "issues": [
+        "MODERATE: cancel_generation() as documented does NOT disable the Cancel button. It only calls self._worker.cancel(). The AC requires Cancel disabled after click.",
+        "The Cancel button is a MainWindow footer button; cancel_generation() is a MainWindow method. It should call self._cancel_btn.setEnabled(False) after self._worker.cancel()."
+      ],
+      "suggested_fix": "Add self._cancel_btn.setEnabled(False) to cancel_generation() after calling self._worker.cancel()."
+    },
+    {
+      "criterion": "AC-15",
+      "text": "Given a GenerationScreen at screen index 4 after generation has finished (success or failure), when cancel_generation() is called directly, then no action is taken (idempotent).",
+      "testable": true,
+      "issues": [
+        "The guard in cancel_generation() checks hasattr(self, '_worker') and self._worker is not None, but does NOT check if the worker has already finished. The idempotency relies on GenerationWorker.cancel() checking self._finished internally.",
+        "Testable by verifying no crash and/or worker.cancel() is not called (using a mock worker where cancel is a MagicMock)."
+      ],
+      "suggested_fix": "Add a check for self._worker._finished or track generation state in MainWindow (e.g., self._generation_finished flag) to make the guard explicit."
+    },
+    {
+      "criterion": "AC-16",
+      "text": "Given a GenerationScreen at screen index 4 after successful generation, when the \"Open Project\" button is clicked, then QDesktopServices.openUrl(Path(output_dir).as_uri()) is called.",
+      "testable": false,
+      "issues": [
+        "BLOCKING: The Open Project button (_open_btn) has NO click handler connected anywhere in MainWindow. No signal connection is documented in the ticket.",
+        "Without a click handler, clicking the button does nothing.",
+        "Additionally, MainWindow would need to know the output_dir at the time of button click (needs _pending_output_dir or similar storage)."
+      ],
+      "suggested_fix": "Document the Open button click handler in MainWindow: _open_btn.clicked.connect(self._on_open_project), where _on_open_project calls QDesktopServices.openUrl(self._pending_output_dir.as_uri()). Also document storing output_dir in _on_generation_finished or _create_generation_worker."
+    }
+  ],
+  "infrastructure_readiness": [
+    {
+      "requirement": "mock_orchestrator.estimate_duration default",
+      "status": "MISSING",
+      "location": "tests/unit/conftest.py:63-71",
+      "notes": "mock_orchestrator fixture does not set estimate_duration.return_value. ReviewScreen.on_enter() calls estimate_duration(). Tests that don't explicitly configure it will get a new MagicMock (truthy), which may produce unexpected behavior. Add: mock_orchestrator.estimate_duration.return_value = DurationEstimate(1, False, [])"
+    },
+    {
+      "requirement": "review_screen fixture",
+      "status": "MISSING",
+      "location": "tests/unit/test_wizard_screens.py (not yet created)",
+      "notes": "New fixture needed: review_screen(qapp, mock_orchestrator) with lazy import, show(), yield, close(). Configure mock_orchestrator for estimate_duration/get_available_* per test."
+    },
+    {
+      "requirement": "generation_screen fixture",
+      "status": "MISSING",
+      "location": "tests/unit/test_wizard_screens.py (not yet created)",
+      "notes": "New fixture needed: generation_screen(qapp) with lazy import, show(), yield, close(). Needs mock worker with QSignal spies for signal injection tests."
+    },
+    {
+      "requirement": "Path.exists() mocking",
+      "status": "EXISTS",
+      "location": "Standard monkeypatch pattern (see test_main_window.py AC-4/AC-5 for precedent)",
+      "notes": "Use monkeypatch.setattr(Path, 'exists', lambda self: True/False). However, global patch affects all Path instances. For AC-10 (exception), use lambda self: (_ for _ in ()).throw(PermissionError(...))."
+    },
+    {
+      "requirement": "QDesktopServices.openUrl mocking",
+      "status": "MISSING",
+      "location": "No existing test uses this pattern",
+      "notes": "Requires: monkeypatch.setattr(QDesktopServices, 'openUrl', mock_func). However, the Open button has no click handler, so this cannot be tested until B-1 is resolved."
+    },
+    {
+      "requirement": "QMessageBox.question mocking",
+      "status": "EXISTS",
+      "location": "tests/unit/test_main_window.py:119-135",
+      "notes": "Pattern established by TestAC5_ShowConfirm: monkeypatch.setattr(QMessageBox, 'question', lambda *a, **kw: <StandardButton>). Works for AC-08/AC-09."
+    },
+    {
+      "requirement": "GenerationWorker mock with signals",
+      "status": "MISSING",
+      "location": "New pattern needed",
+      "notes": "GenerationScreen tests need a mock worker with real Signal instances for signal emission. MagicMock(spec=GenerationWorker) does NOT create real Signal objects. Need a real GenerationWorker instance or a test double that inherits from QObject with matching Signal definitions."
+    },
+    {
+      "requirement": "main_window fixture migration",
+      "status": "INCOMPLETE",
+      "location": "tests/unit/test_main_window.py:19-34 and tests/unit/test_wizard_screens.py:543-554",
+      "notes": "Both fixtures need index 3→QWidget() replaced with ReviewScreen(mock_orchestrator) and index 4→QWidget() replaced with GenerationScreen(). The test_wizard_screens.py integration fixture also needs this change. TestAC6 additionally requires Path.exists() mock or _create_generation_worker mock to prevent thread creation on next_screen()."
+    },
+    {
+      "requirement": "Cross-thread test cleanup",
+      "status": "MISSING",
+      "location": "No existing pattern",
+      "notes": "next_screen() at index 3 starts a QThread. Tests for AC-07/AC-08 that let next_screen() proceed to thread start must either mock _create_generation_worker() or ensure thread lifecycle is managed (quit + wait) during test teardown."
+    }
+  ],
+  "coverage_analysis": {
+    "happy_path": "COVERED",
+    "error_cases": "BLOCKED",
+    "edge_cases": "COVERED",
+    "plugin_isolation_tested": "NO"
+  },
+  "verdict": "NEEDS_REVISION",
+  "blocking_issues": [
+    "B-1: Open/Close buttons have no click handlers — AC-16 requires Open Project to call QDesktopServices.openUrl; Close button behavior is undefined. Both buttons exist in MainWindow footer but have zero signal connections. Blocking AC-05, AC-06, AC-16.",
+    "B-2: No button state transition mechanism for generation finished/error — _update_navigation_buttons() unconditionally shows Cancel/Open/Close at index 4. AC-05 requires Cancel hidden and Open+Close visible on success. AC-06 requires Cancel hidden on error. No documented mechanism tracks generation state for button visibility. Blocking AC-05, AC-06.",
+    "B-3: AC-10 try/except not implemented in next_screen() code — The overwrite flow describes exception handling for output_dir.exists() but the code sample does not wrap it in try/except. AC-10 is untestable without this guard. Blocking AC-10.",
+    "B-4: GenerationScreen on_exit() override missing — AC-12 requires on_exit() to call worker.cancel() during generation, but no on_exit() override is shown in the API spec or anywhere in the ticket. Base class on_exit() is a no-op. Blocking AC-12."
+  ],
+  "remaining_issues": {
+    "moderate": [
+      "M-1: cancel_generation() does not disable Cancel button (required by AC-14). Add self._cancel_btn.setEnabled(False).",
+      "M-2: is_generating attribute referenced in navigate_to() injection but not defined in GenerationScreen API spec. Must document and implement.",
+      "M-3: _cancel_btn.clicked.disconnect() in navigate_to() is unguarded — raises TypeError if no connections exist. Use try/except TypeError.",
+      "M-4: GenerationWorker currently lacks overwrite_confirmed __init__ param and forwarding to orchestrator.generate(). Ticket states this is added but the existing workers.py must be compatible.",
+      "M-5: Test AC-07/AC-08 thread lifecycle not documented. next_screen() starts a real QThread. Tests need mock strategy or cleanup pattern."
+    ],
+    "low": [
+      "L-1: AC-01 'tree view' widget type unspecified — specify QTreeWidget with objectName for reliable test targeting.",
+      "L-2: AC-02 red QLabel lacks objectName — add objectName=\"duration_warning_label\".",
+      "L-3: set_spec() method (ReviewScreen) vs attribute assignment (ConfigurationScreen) inconsistency — minor but worth consistency discussion.",
+      "L-4: mock_orchestrator in conftest.py lacks estimate_duration default return value — add DurationEstimate(1, False, []).",
+      "L-5: AC-11 is redundant with AC-03/04/05/06 — consider documenting as implicit verification rather than separate AC."
+    ]
+  }
+}

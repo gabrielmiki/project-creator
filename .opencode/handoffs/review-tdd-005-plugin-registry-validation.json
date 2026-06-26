@@ -1,0 +1,378 @@
+{
+  "ac_validation": [
+    {
+      "criterion": "AC-1",
+      "text": "Given an installed plugin with an entry point, when discover() is called, then the plugin is found with priority 10.",
+      "testable": true,
+      "issues": [
+        "\"Installed plugin with an entry point\" requires mocking importlib.metadata.entry_points() — no forge plugin entry points exist in CI. This is testable with monkeypatch/mock, but should be explicitly noted as a mocking requirement.",
+        "Does NOT specify how to verify \"priority 10\" — is it encoded in the returned dict value? Should the return value include priority info, or is it implicit (entry_points win over .plugins/)? The AC should clarify the assertion: e.g., \"the plugin is found in the dict, and if a .plugins/ version also existed, the entry_points version would take precedence.\""
+      ],
+      "suggested_fix": "Add explicit assertion target: \"Given importlib.metadata.entry_points() returns a plugin 'myplugin' and .plugins/ is empty, when discover() is called, then 'myplugin' is in the returned dict and is an instance of PluginBase.\""
+    },
+    {
+      "criterion": "AC-2",
+      "text": "Given a conflict between entry_points and .plugins/ for the same ID, when discover() is called, then entry_points wins and a warning is logged.",
+      "testable": true,
+      "issues": [
+        "\"A warning is logged\" is testable via caplog, but the expected log level and message content are unspecified. Should it be logging.warning() or print()? What message format?",
+        "Does the warning contain both source names (entry_points and .plugins/) so the developer can identify the conflict?",
+        "This AC only tests the entry_points-win case. It does NOT test the reverse (unlikely but the behavior should be symmetric for completeness)."
+      ],
+      "suggested_fix": "Specify: \"...and a message is logged at WARNING level containing both the plugin ID and both source paths.\""
+    },
+    {
+      "criterion": "AC-3",
+      "text": "Given strict=True and a conflict, when discover() is called, then DiscoveryError is raised.",
+      "testable": true,
+      "issues": [
+        "DiscoveryError is NOT defined anywhere in the ticket. It's referenced in AC-3 and the discovery priority section but has no class definition in the API spec. Where does it live? It should be either in registry.py or as a separate exception.",
+        "What does the error message contain? Should it include the conflicting plugin ID?",
+        "Does strict=True raise DiscoveryError for ANY conflict (regardless of whether entry_points or .plugins/ would win)? The AC doesn't specify — is it only raised on actual resolution or on any duplicate?"
+      ],
+      "suggested_fix": "Add DiscoveryError (and CycleDependencyError) to the API spec section. Clarify: \"Given strict=True and a plugin ID present in both entry_points and .plugins/, when discover() is called, then DiscoveryError is raised before any resolution occurs.\""
+    },
+    {
+      "criterion": "AC-4",
+      "text": "Given requires=[\"a\"] and requires=[\"b\"] and no cycle, when topological_sort([\"b\",\"a\"]) is called, then \"a\" comes before \"b\".",
+      "testable": true,
+      "issues": [
+        "CRITICAL AMBIGUITY: The wording \"Given requires=[\"a\"] and requires=[\"b\"]\" is confusing — it reads as two separate requires declarations on the same entity, or as two entities each with a requires list. The intended meaning is: plugin A has requires=[\"b\"] (A needs B first), so topological_sort([\"A\",\"B\"]) returns [\"B\", \"A\"] (B before A). But the AC as written says \"a comes before b\" which would mean A sorts before B — contradicting the dependency direction.",
+        "The AC doesn't specify HOW requires/run_after is accessed on the plugin instances. Does topological_sort type-check that the passed strings match plugin.name attributes? Or does it work purely on string IDs and look them up via resolve?",
+        "Missing: what happens to plugins in the input list that have no dependency declarations?"
+      ],
+      "suggested_fix": "Reword: \"Given two registered plugins where plugin 'fastapi' has requires=['utils'] and plugin 'utils' has no requires, when topological_sort(['fastapi', 'utils']) is called, then plugin 'utils' (dependency) appears before plugin 'fastapi' (dependent) in the returned list.\""
+    },
+    {
+      "criterion": "AC-5",
+      "text": "Given a circular dependency (A requires B, B requires A), when topological_sort([\"A\",\"B\"]) is called, then CycleDependencyError is raised.",
+      "testable": true,
+      "issues": [
+        "CycleDependencyError is NOT defined anywhere in the ticket — same issue as DiscoveryError. No class definition, no module location specified.",
+        "The dependency ordering section mentions \"with the cycle path\" — should the error contain the cycle path for debugging? If so, the AC should assert this.",
+        "What about self-loops (A requires A)? Is that a cycle or a different error?",
+        "What about longer cycles (A→B→C→A)? AC only tests a 2-element cycle."
+      ],
+      "suggested_fix": "Add CycleDependencyError to API spec. Clarify: \"Given two plugins where A has requires=['B'] and B has requires=['A'], when topological_sort(['A','B']) is called, then CycleDependencyError is raised with a message containing the cycle path (e.g., 'A → B → A').\""
+    },
+    {
+      "criterion": "AC-6",
+      "text": "Given a valid ProjectSpec, when validate_spec() is called, then an empty list is returned.",
+      "testable": true,
+      "issues": [
+        "BLOCKING: The ticket does NOT specify what validation rules validate_spec() applies. Without knowing which fields are validated (project_name non-empty? template.backend_id required to resolve? domains non-empty?), it's impossible to construct a \"valid\" ProjectSpec or define what \"valid\" means.",
+        "Is config dict allowed to be empty? Are domains allowed to be empty?",
+        "The ValidationEngine API section has no specification of validation rules — just method signatures."
+      ],
+      "suggested_fix": "Add a validation rules section that specifies exactly what validate_spec() checks. For example: \"ProjectSpec validation rules: (1) project_name must be a non-empty string; (2) template.template_def must be a valid TemplateDefinition; (3) domains list must contain at least one Domain; (4) backend_id in template must be resolvable via PluginRegistry.\""
+    },
+    {
+      "criterion": "AC-7",
+      "text": "Given a ProjectSpec with missing required field, when validate_spec() is called, then the error list includes that field.",
+      "testable": true,
+      "issues": [
+        "\"Missing required field\" presupposes knowledge of which fields are required — see AC-6 issue. Without validation rules, we can't specify what \"missing\" means.",
+        "\"The error list includes that field\" is vague — does it mean the ValidationError.field attribute matches the missing field name? Or the error message contains the field name?",
+        "Only tests ONE missing field. What about multiple missing fields? The error list should include all of them."
+      ],
+      "suggested_fix": "After defining validation rules: \"Given a ProjectSpec with project_name='' (empty string), when validate_spec() is called, then the returned list contains at least one ValidationError where error.field == 'project_name'.\""
+    },
+    {
+      "criterion": "AC-8",
+      "text": "Given a config value outside question bounds, when validate_plugin_config() is called, then a ValidationError is returned.",
+      "testable": true,
+      "issues": [
+        "\"Outside question bounds\" is ambiguous — does it mean: (a) integer value outside Question.validation.min/max? (b) string not matching Question.validation.pattern? (c) CHOICE value not in Question.options? (d) missing required field? The AC should specify which bound is being tested.",
+        "\"a ValidationError is returned\" — singular, but the return type is list[ValidationError]. Should it be \"the returned list contains at least one ValidationError\"?",
+        "What about edge cases: config dict is empty? questions list is empty? config value matches multiple violation rules?"
+      ],
+      "suggested_fix": "Be concrete: \"Given a Question with key='port', question_type=QuestionType.INTEGER, validation=ValidationRule(min=1024, max=65535), when validate_plugin_config('myplugin', {'port': 80}, [question]) is called, then the returned list contains a ValidationError where error.field == 'port' and error.severity == 'error'.\""
+    }
+  ],
+  "method_coverage_table": [
+    {
+      "method": "PluginRegistry.__init__(strict: bool = False)",
+      "ac_coverage": "NONE",
+      "notes": "ZERO coverage. strict=True is indirectly tested by AC-3, but default strict=False and constructor behavior have no explicit AC. Without an AC, it's unclear if the default is strict=False or strict=True."
+    },
+    {
+      "method": "PluginRegistry.discover() -> dict[str, PluginBase]",
+      "ac_coverage": "AC-1, AC-2, AC-3",
+      "notes": "Covers entry_points only (AC-1), entry_points vs .plugins/ conflict (AC-2), and strict mode conflict (AC-3). Missing: .plugins/ only (no entry_points), empty discovery, invalid .plugins/ files."
+    },
+    {
+      "method": "PluginRegistry.resolve(plugin_id: str) -> PluginBase",
+      "ac_coverage": "NONE",
+      "notes": "ZERO coverage. No AC tests what happens when resolving an existing plugin ID, a non-existent plugin ID, or resolving before discover() is called."
+    },
+    {
+      "method": "PluginRegistry.resolve_many(plugin_ids: list[str]) -> list[PluginBase]",
+      "ac_coverage": "NONE",
+      "notes": "ZERO coverage. No AC tests bulk resolution, partial resolution failure (one ID missing), or empty input list."
+    },
+    {
+      "method": "PluginRegistry.get_available_backends() -> list[TemplateDefinition]",
+      "ac_coverage": "NONE",
+      "notes": "ZERO coverage. Additionally, return type list[TemplateDefinition] is architecturally questionable — PluginRegistry discovers plugins, not template definitions. TemplateDefinition is a domain model that combines backend_id + frontend_id. The registry has no knowledge of templates. Should return list[PluginBase] or take template definitions as input."
+    },
+    {
+      "method": "PluginRegistry.get_available_frontends() -> list[TemplateDefinition]",
+      "ac_coverage": "NONE",
+      "notes": "ZERO coverage. Same architectural issue as get_available_backends(). Additionally, PluginBase has no 'is_backend'/'is_frontend' marker — how does the registry distinguish?"
+    },
+    {
+      "method": "PluginRegistry.get_missing_dependencies(plugin_id: str) -> list[str]",
+      "ac_coverage": "NONE",
+      "notes": "ZERO coverage. No AC tests dependency resolution for a plugin with satisfied dependencies, missing dependencies, or a plugin ID that doesn't exist."
+    },
+    {
+      "method": "PluginRegistry.topological_sort(plugin_ids: list[str]) -> list[PluginBase]",
+      "ac_coverage": "AC-4, AC-5",
+      "notes": "Covers sort correctness (AC-4) and cycle detection (AC-5). Missing: single element, empty list, plugin IDs with no requires/run_after, plugin IDs not in registry, deferred dependency (not-yet-registered plugin)."
+    },
+    {
+      "method": "ValidationEngine.validate_spec(spec: ProjectSpec) -> list[ValidationError]",
+      "ac_coverage": "AC-6, AC-7",
+      "notes": "Covers valid spec (AC-6) and missing required field (AC-7). MISSING: validation rules specification entirely — impossible to define what \"valid\" means or what \"missing required field\" refers to."
+    },
+    {
+      "method": "ValidationEngine.validate_plugin_config(plugin_id, config, questions) -> list[ValidationError]",
+      "ac_coverage": "AC-8",
+      "notes": "Covers out-of-bounds config value (AC-8). MISSING: validation of multiple question types (STRING/BOOLEAN/CHOICE/MULTI_SELECT/INTEGER), missing required fields, type mismatches, empty config, empty questions."
+    }
+  ],
+  "spec_consistency": {
+    "findings": [
+      {
+        "aspect": "PluginRegistry API spec vs Architecture.md",
+        "status": "INCOMPLETE",
+        "detail": "Architecture.md has NO PluginRegistry API spec (only mentions it by name in the layer diagram). The ticket is the sole authority for PluginRegistry's API. No direct contradiction, but the architecture.md should ideally define the interface that generation code provides."
+      },
+      {
+        "aspect": "ValidationEngine API spec vs Architecture.md",
+        "status": "CONSISTENT",
+        "detail": "Architecture.md lines 312-318 show identical signatures: validate_spec(spec: ProjectSpec) -> list[ValidationError] and validate_plugin_config(plugin_id: str, config: dict[str, Any], questions: list[Question]) -> list[ValidationError]. Both match the ticket."
+      },
+      {
+        "aspect": "Discovery priority vs Architecture.md",
+        "status": "CONSISTENT",
+        "detail": "Both documents agree: entry_points (priority 10) wins over .plugins/ (priority 5). Strict mode errors on conflict. Deterministic sorted iteration."
+      },
+      {
+        "aspect": "get_available_backends() return type",
+        "status": "ARCHITECTURAL MISMATCH",
+        "detail": "Method returns list[TemplateDefinition], but TemplateDefinition is a composite model (backend_id + frontend_id) that belongs to the domain/template layer. PluginRegistry knows about plugins only — it has no concept of template definitions. Additionally, PluginBase has no capability/attribute to distinguish 'backend' from 'frontend' plugins. The method likely should return list[PluginBase] or be moved to the orchestrator (T-007) which knows about both plugins and templates."
+      },
+      {
+        "aspect": "Exception classes not defined",
+        "status": "MISSING FROM SPEC",
+        "detail": "DiscoveryError (AC-3) and CycleDependencyError (AC-5) are referenced in acceptance criteria but have no class definition in the API spec. No module location, no inheritance, no constructor signature specified."
+      },
+      {
+        "aspect": "Dependency ordering vs Architecture.md",
+        "status": "CONSISTENT",
+        "detail": "Both documents agree on topological sort semantics: resolves requires/run_after, detects cycles, guarantees dependencies run first. CycleDependencyError with cycle path."
+      }
+    ]
+  },
+  "cross_ticket_dependencies": [
+    {
+      "dependency": "generation/__init__.py already exists (T-003/T-004)",
+      "status": "CONFLICT",
+      "detail": "Ticket lists src/forge/generation/__init__.py as 'Files to create' but it already exists from T-003 (updated by T-004). Currently exports ProgressReporter, StdoutProgressReporter, MockProgressReporter, and imports GenerationTransaction as _. The ticket MUST list this as 'update' not 'create', and specify whether PluginRegistry/ValidationEngine should be added to its exports.",
+      "action_required": "Change 'Files to create' to 'Files to create or update'. generation/__init__.py needs updated __all__ to include PluginRegistry, ValidationEngine, ValidationError (and any exception classes)."
+    },
+    {
+      "dependency": "T-003 AC-8 AST scanner scans ALL generation/*.py files",
+      "status": "BLOCKING",
+      "detail": "T-003's test_progress.py:TestAC8_NoCrossLayerImports iterates all *.py files in generation/ and asserts: (1) no forge.ui imports, (2) at least one forge.infrastructure import. When T-005 creates registry.py and validation.py, these files will be scanned. If they don't import from forge.infrastructure, the T-003 test will FAIL. If they import from forge.ui, the T-003 test will FAIL.",
+      "action_required": "Add a no-op import (e.g., `from forge.infrastructure import GenerationTransaction as _  # noqa: F401`) to both registry.py and validation.py to satisfy the existing AST scanner. Ensure no forge.ui imports exist."
+    },
+    {
+      "dependency": "PluginBase import path (T-002)",
+      "status": "CONFIRMED",
+      "detail": "PluginBase lives at src/forge/plugins/base.py and is exported via forge.plugins. Import: from forge.plugins.base import PluginBase. Confirmed working — conftest.py already uses this path. PluginBase.__init__() creates per-instance copies of requires/run_after (list(self.__class__.requires or [])), so the mutable-default risk documented in T-002 post-mortem is already mitigated for T-005's topological_sort."
+    },
+    {
+      "dependency": "Domain model import paths (T-001)",
+      "status": "CONFIRMED",
+      "detail": "All domain models needed by T-005 are confirmed importable: from forge.domain import ProjectSpec, TemplateDefinition, Question, QuestionType, ValidationRule, ValidationError. Note: ValidationError is a domain-level concept — should it live in domain/ or generation/? Currently it's only in the generation/ layer in the ticket."
+    },
+    {
+      "dependency": "T-007 Orchestrator depends on PluginRegistry",
+      "status": "FORWARD REFERENCE",
+      "detail": "Per dependency-analysis.md and tickets/007-orchestrator-cli.md, T-007's Orchestrator takes (registry: PluginRegistry, validation: ValidationEngine) as constructor args. The API signatures must match what T-007 expects. Future concern — no immediate action."
+    },
+    {
+      "dependency": "T-016 Integration Tests reference PluginRegistry",
+      "status": "FORWARD REFERENCE",
+      "detail": "Ticket 016 references a registry_with_discovery fixture. No immediate action needed."
+    }
+  ],
+  "coverage_analysis": {
+    "happy_path": "PARTIAL",
+    "error_cases": "PARTIAL",
+    "edge_cases": "MISSING",
+    "method_coverage": "3 of 9 methods have AC coverage (33%)",
+    "coverage_gaps": {
+      "happy_path_gaps": [
+        "PluginRegistry.__init__ never tested",
+        "PluginRegistry.resolve() never tested",
+        "PluginRegistry.resolve_many() never tested",
+        "PluginRegistry.get_available_backends() never tested",
+        "PluginRegistry.get_available_frontends() never tested",
+        "PluginRegistry.get_missing_dependencies() never tested",
+        "topological_sort with single element not tested",
+        "topological_sort with empty list not tested",
+        "validate_spec validation rules not defined",
+        "validate_plugin_config with all question types not tested"
+      ],
+      "error_cases_gaps": [
+        "resolve() on non-existent plugin ID — should this raise KeyError?",
+        "resolve_many() with one non-existent ID",
+        "get_missing_dependencies() on non-existent plugin ID",
+        "topological_sort with plugin ID not in registry",
+        "topological_sort with self-loop (A requires A)",
+        "topological_sort with longer cycle (A→B→C→A) — only 2-element cycle tested",
+        "Configuration value type mismatch (int vs string for expected int)",
+        "Missing required config keys"
+      ],
+      "edge_cases_gaps": [
+        "Empty discovery (no entry points, no .plugins/)",
+        ".plugins/ with invalid files (no plugin attribute, syntax errors)",
+        "Duplicate plugin IDs within same source (two entry points with same ID)",
+        "get_missing_dependencies when dependency is not discovered at all",
+        "validate_plugin_config with empty questions list",
+        "validate_plugin_config with empty config dict",
+        "validate_spec with empty domains list",
+        "validate_spec with empty config dict",
+        "Plugin ID with special characters in topological_sort",
+        "Plugin with requires=['self'] (self-reference)"
+      ]
+    }
+  },
+  "infrastructure_readiness": [
+    {
+      "requirement": "conftest.py with mock plugin fixtures",
+      "status": "EXISTS (with gaps)",
+      "location": "tests/unit/conftest.py",
+      "notes": "EXISTS with 5 mock plugin classes (FileOnlyPlugin, ConfigOnlyPlugin, etc.). However, none of these set requires/run_after attributes, and they use short names like 'file-only' which may not match the PluginRegistry resolution pattern. For topological_sort testing, plugins with explicit requires=['...'] values will be needed. May need additional fixtures or inline definitions."
+    },
+    {
+      "requirement": "AST scanner pattern for generation layer",
+      "status": "EXISTS (with cross-ticket constraint)",
+      "location": "tests/unit/test_progress.py (TestAC8_NoCrossLayerImports)",
+      "notes": "EXISTS but creates a binding constraint on T-005: every .py file in generation/ must (a) NOT import from forge.ui, and (b) MUST import from forge.infrastructure. T-005's new registry.py and validation.py will be auto-scanned and will fail T-003's AC-8 test if they don't have forge.infrastructure imports."
+    },
+    {
+      "requirement": "pytest caplog fixture for warning assertions",
+      "status": "EXISTS",
+      "location": "Built into pytest",
+      "notes": "AC-2 requires 'a warning is logged' — caplog is the pytest-native fixture for asserting on log messages. If the registry logs via logging.warning(), caplog can assert level+message. If it uses print(), capsys handles it. Either works."
+    },
+    {
+      "requirement": "Mock for importlib.metadata.entry_points()",
+      "status": "MISSING (needs to be created in test file)",
+      "location": "No existing test uses this pattern",
+      "notes": "PluginRegistry.discover() needs to mock importlib.metadata.entry_points() for entry_points discovery. pytest monkeypatch fixture can mock this. No prior test in the project mocks entry_points — this is a new pattern for T-005."
+    },
+    {
+      "requirement": "Mock for .plugins/ filesystem scanning",
+      "status": "MISSING (needs to be created in test file)",
+      "location": "No existing test uses this pattern",
+      "notes": "PluginRegistry.discover() reads .plugins/ directory. Tests need tmp_path-based directory fixture with synthetic plugin files. Pattern similar to tmp_path in test_transaction.py but with .py file creation and dynamic module loading."
+    },
+    {
+      "requirement": "ValidationError dataclass",
+      "status": "MISSING (needs to be created)",
+      "location": "src/forge/generation/validation.py (or domain/)",
+      "notes": "The ValidationError @dataclass is part of the API spec but has no module location specified. Should it live in generation/validation.py alongside ValidationEngine? Or in domain/ as a pure model? Given it has no I/O and no cross-layer dependencies, domain/ would be architecturally appropriate, but the ticket groups it with the generation layer."
+    },
+    {
+      "requirement": "DiscoveryError and CycleDependencyError exception classes",
+      "status": "MISSING (needs to be created)",
+      "location": "Not specified in ticket",
+      "notes": "Both exceptions are referenced in ACs but have no definition. Should they inherit from Exception? Should they have cycle_path or conflicting_id attributes? No module location specified."
+    },
+    {
+      "requirement": "Domain model test for ValidationError round-trip",
+      "status": "NOT APPLICABLE (deferred)",
+      "notes": "If ValidationError is added to domain/, it would need a domain-level test similar to other domain models. If it stays in generation/, no domain test needed."
+    }
+  ],
+  "remaining_gaps": [
+    {
+      "scenario": "Validation rules are unspecified — AC-6 and AC-7 cannot be implemented without knowing what validate_spec() checks",
+      "severity": "blocking",
+      "suggested_ac": "Add a 'Validation Rules' section defining: (1) project_name must be non-empty, (2) template must be a valid TemplateDefinition (all required fields non-empty), (3) domains must contain at least one Domain, (4) plugin IDs in config must resolve via PluginRegistry."
+    },
+    {
+      "scenario": "resolve() method has zero AC coverage — critical for PluginRegistry usability",
+      "severity": "blocking",
+      "suggested_ac": "Add AC: 'Given a discovered plugin with ID \"myplugin\", when resolve(\"myplugin\") is called, then the returned PluginBase instance has name == \"myplugin\".' Add error AC: 'Given a non-existent plugin ID, when resolve() is called, then KeyError is raised.'"
+    },
+    {
+      "scenario": "resolve_many() has zero AC coverage",
+      "severity": "high",
+      "suggested_ac": "Add AC for bulk resolution with all-valid list, and error AC for list containing non-existent ID."
+    },
+    {
+      "scenario": "get_available_backends() / get_available_frontends() have zero AC coverage AND return type list[TemplateDefinition] is architecturally wrong",
+      "severity": "blocking",
+      "suggested_ac": "Resolve architectural question first: does PluginRegistry differentiate backends from frontends? If not, these methods don't belong here. If yes, what distinguishes them? If they're meant to be 'plugins that support a template definition', the return type and method location need redesign."
+    },
+    {
+      "scenario": "get_missing_dependencies() has zero AC coverage",
+      "severity": "high",
+      "suggested_ac": "Add AC for: resolved dependency, unresolved dependency, no dependencies, non-existent plugin ID."
+    },
+    {
+      "scenario": "PluginRegistry.__init__() not tested — strict parameter",
+      "severity": "medium",
+      "suggested_ac": "Add AC for default strict=False, and verify strict=True is tested independently of discover(). Currently strict mode only tested inline in AC-3."
+    },
+    {
+      "scenario": "DiscoveryError and CycleDependencyError not defined in API spec",
+      "severity": "blocking",
+      "suggested_ac": "Add exception class definitions with module location, inheritance, and constructor parameters."
+    },
+    {
+      "scenario": "AC-8 ambiguous: 'config value outside question bounds' — which question type? Which bound?",
+      "severity": "blocking",
+      "suggested_ac": "Specify concrete example: INTEGER with validation.min/max, or STRING with validation.pattern, or CHOICE with options list. Add ACs for other question types."
+    },
+    {
+      "scenario": "topological_sort with single element / empty list not tested",
+      "severity": "medium",
+      "suggested_ac": "Add AC: given a single plugin with no requires, when topological_sort(['only_plugin']) is called, then it returns ['only_plugin'] unchanged. Add AC: given empty list, when topological_sort([]) is called, then empty list is returned."
+    },
+    {
+      "scenario": "Cross-ticket test coupling: T-003 AC-8 will fail on registry.py and validation.py without forge.infrastructure imports",
+      "severity": "blocking",
+      "suggested_ac": "Add to ticket's implementation notes: each new generation/ file must include from forge.infrastructure import GenerationTransaction as _  # noqa: F401 to satisfy existing AST scanner. This is NOT optional — the existing T-003 test will fail without it."
+    },
+    {
+      "scenario": "generation/__init__.py listed as 'create' but already exists from T-003/T-004",
+      "severity": "high",
+      "suggested_ac": "Change to 'update'. generation/__init__.py must be updated to export PluginRegistry, ValidationEngine, ValidationError (and exception classes) alongside existing ProgressReporter exports."
+    },
+    {
+      "scenario": "topological_sort inputs are string IDs — how does the method resolve them to plugin instances?",
+      "severity": "medium",
+      "suggested_ac": "Clarify whether topological_sort() calls resolve() internally (resolving each string ID to a PluginBase instance via the discovered dict), or whether it accepts pre-resolved PluginBase instances. The current signature (list[str] -> list[PluginBase]) suggests the former, but this creates a coupling between topological_sort and the discovery state."
+    }
+  ],
+  "verdict": "NEEDS_REVISION",
+  "blocking_issues": [
+    "1. SPEC GAP: No validation rules defined — AC-6 and AC-7 are untestable without knowing what validate_spec() checks. Must specify concrete rules (project_name non-empty? template valid? domains non-empty? etc.).",
+    "2. METHOD COVERAGE: 6 of 9 API methods have zero AC coverage: __init__(), resolve(), resolve_many(), get_available_backends(), get_available_frontends(), get_missing_dependencies(). Only 3 methods (discover, topological_sort) are covered.",
+    "3. ARCHITECTURAL ISSUE: get_available_backends()/get_available_frontends() return list[TemplateDefinition] — PluginRegistry doesn't know about template definitions. Also, PluginBase has no 'is_backend' marker. These methods need redesign or removal.",
+    "4. MISSING EXCEPTIONS: DiscoveryError (AC-3) and CycleDependencyError (AC-5) referenced but not defined in API spec. No module location, inheritance, or constructor specified.",
+    "5. CROSS-TICKET TEST COUPLING: T-003's AC-8 AST scanner requires all generation/*.py files to import from forge.infrastructure and NOT import from forge.ui. T-005's new files will be auto-scanned and will FAIL the existing test unless they comply.",
+    "6. FILESYSTEM MISMATCH: generation/__init__.py listed as 'create' but already exists from T-003/T-004. Must be 'update' with explicit instructions for what to export.",
+    "7. AC-8 AMBIGUOUS: 'config value outside question bounds' does not specify which question type, which validation rule, or what constitutes 'outside bounds'. Must be specified concretely.",
+    "8. AC-4 AMBIGUOUS: 'Given requires=[\"a\"] and requires=[\"b\"]' is confusing — unclear which plugin declares which requirement, and which ordering is expected.",
+    "9. VALIDATION_ERROR LOCATION: The ValidationError @dataclass has no specified module location. Should it be in generation/validation.py or domain/? This affects import paths for both production code and tests."
+  ],
+  "summary": "T-005 PluginRegistry + ValidationEngine requires significant revision before it's ready for implementation. The most critical issues are: (1) validation rules are completely unspecified, making AC-6/7/8 untestable; (2) 6 of 9 API methods have zero AC coverage, leaving resolve(), resolve_many(), get_available_backends(), get_available_frontends(), get_missing_dependencies(), and __init__() untested; (3) two exception classes (DiscoveryError, CycleDependencyError) are referenced but not defined; (4) get_available_backends()/get_available_frontends() have an architectural return-type mismatch (list[TemplateDefinition] in a class that only knows about plugins); (5) a cross-ticket test dependency from T-003's AC-8 AST scanner will cause test failures when new generation/ files are created without forge.infrastructure imports; (6) generation/__init__.py is listed for creation but already exists. The 8 existing ACs are mostly well-structured with Given/When/Then but suffer from underspecified behavior (especially around validation rules and config bounds). Recommended: add a 'Validation Rules' section to the ticket, add ACs for the 6 uncovered methods, define exception classes, resolve the get_available_backends() architectural question, and update cross-ticket file lists."
+}

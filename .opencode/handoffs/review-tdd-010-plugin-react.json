@@ -1,0 +1,549 @@
+{
+  "meta": {
+    "ticket": "T-010 (React Plugin)",
+    "review_round": 1,
+    "review_date": "2026-06-21"
+  },
+  "ac_validation": [
+    {
+      "criterion": "AC-01",
+      "text": "[unit] Given the ReactPlugin class, when instantiated, then plugin.name returns 'react'.",
+      "testable": true,
+      "issues": [
+        "Tests the class attribute `name = 'react'` directly. The PluginRegistry uses the entry point name (pyproject.toml:17) as the canonical ID. AC-01 only verifies the class attribute, not that the registry resolves with ID 'react'. Must remain consistent with entry point — Design Note 3 covers this."
+      ],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-02a",
+      "text": "Given a ProjectSpec with frontend_id='react' and default config ({\"react\": {}}), when files() is called, then the returned list contains GeneratedFile entries for src/App.tsx, src/main.tsx, and public/index.html. All entries have Path objects as their .path attribute.",
+      "testable": true,
+      "issues": [
+        "'contains' is slightly loose — recommend asserting exact set membership for these 3 paths to prevent implementation from adding/omitting core files.",
+        "Uses `frontend_id` on TemplateDefinition — verified: project_spec.py:24 has `frontend_id: str | None = None`. Correct field usage.",
+        "Design Note 12 explicitly says files() generates ALL files (including scaffold overlap), making public/index.html presence in files() correct. However, the cross-method consistency matrix (Default row) contains a contradictory note: 'files() injects only non-scaffold files' — see MODERATE-2."
+      ],
+      "suggested_fix": "Replace 'contains' with 'includes' to make the assertion type unambiguous. Also resolve the DN12 vs matrix contradiction before implementation (see MODERATE-2)."
+    },
+    {
+      "criterion": "AC-02b",
+      "text": "Given a ProjectSpec with frontend_id='react', when PluginExecutionEngine.run() is simulated (call files() → txn.stage_file(), directories() → txn.stage_directory(), dependencies() → txn.requirements.extend()), then core file paths are staged and base dependencies are appended to txn.requirements.",
+      "testable": true,
+      "issues": [
+        "Combines FileProvider AND DependencyProvider assertions in one AC — same pattern as T-008 AC-2b and T-009 AC-2b. Failure clarity would benefit from splitting into 2b_i (stage_file assertions) and 2b_ii (requirements assertions).",
+        "PluginExecutionEngine cannot be imported in test file (cross-layer). Test must use local simulation pattern (like _MockTransaction in test_plugin_fastapi.py). The AC text describes system behavior, not test implementation — this is acceptable.",
+        "T-008 post-mortem (Lesson 6) confirms the local simulation pattern works and preserves layer isolation."
+      ],
+      "suggested_fix": "Consider splitting into 2b_i (stage_file assertions) and 2b_ii (requirements assertions) for failure isolation clarity."
+    },
+    {
+      "criterion": "AC-03",
+      "text": "Given the Configurable mixin, when questions() is called, then it returns Question objects whose .key attributes include 'bundler', 'include_typescript', 'include_router', 'include_tailwind', and 'state_management'. The bundler question must be QuestionType.CHOICE with options exactly equal to ['vite', 'webpack']. include_typescript, include_router, and include_tailwind must be QuestionType.BOOLEAN. state_management must be QuestionType.CHOICE with options exactly equal to ['none', 'zustand', 'redux']. All keys must be unique.",
+      "testable": true,
+      "issues": [
+        "Well-specified with concrete types and exact option equality. Can assert each question's key, type, and options independently.",
+        "Uniqueness assertion: `len(keys) == len(set(keys))` — straightforward.",
+        "Question order is not specified. Test should use any()/next() pattern, not positional indexing (matching T-008 test pattern).",
+        "Question.default values are described in Design Note 11 and API spec comments but not shown in the Question() constructor pseudocode. AC-15/AC-16 effectively document the defaults via behavior assertions. Acceptable."
+      ],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-04",
+      "text": "Given bundler='vite' in config, when files() is called, then vite.config.ts is in the returned file paths, and webpack.config.js is NOT in the returned file paths.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-05",
+      "text": "Given bundler='webpack' in config, when files() is called, then webpack.config.js is in the returned file paths, and vite.config.ts is NOT in the returned file paths.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-06",
+      "text": "Given include_tailwind=True in config, when files() is called, then tailwind.config.js is in the returned file paths, and its content contains './index.html' and './src/**/*.{ts,tsx}' (or '{js,jsx}' when TypeScript is disabled) as content paths. postcss.config.js is also present.",
+      "testable": true,
+      "issues": [
+        "The conditional content check ('{ts,tsx}' vs '{js,jsx}') is well-specified but the AC combines two config variants in one criterion. When include_typescript=False + include_tailwind=True, the content paths should use '{js,jsx}'. When include_typescript=True (default) + include_tailwind=True, they should use '{ts,tsx}'. Consider parametrizing or splitting the content assertion.",
+        "Content assertions use substring match ('contains './index.html''), which is appropriate for generated file content checks."
+      ],
+      "suggested_fix": "Split into two sub-assertions: (a) tailwind.config.js present with postcss.config.js, (b) content paths match {ts,tsx} variant when TS enabled, {js,jsx} variant when TS disabled. Alternatively, parametrize the content check."
+    },
+    {
+      "criterion": "AC-07",
+      "text": "Given include_tailwind=False (or absent from config), when files() is called, then tailwind.config.js is NOT in the returned file paths.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-08",
+      "text": "Given include_typescript=True in config, when files() is called, then src/App.tsx and src/main.tsx are in the returned file paths, and no .jsx files are present. When dependencies() is called, the returned list includes 'typescript', '@types/react', and '@types/react-dom'.",
+      "testable": true,
+      "issues": [
+        "Cross-method consistency check (files + deps) — good. Same pattern as T-009 AC-03+AC-08 cross-reference.",
+        "'no .jsx files are present' — testable via `all('.jsx' not in str(f.path) for f in files())`. Defensive assertion.",
+        "Does NOT assert that vite.config.ts is still present when TS=True — but AC-04 covers the bundler=vite path. Acceptable — complementary AC coverage."
+      ],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-09",
+      "text": "Given include_typescript=False in config, when files() is called, then src/App.jsx and src/main.jsx are in the returned file paths, and no .tsx or .ts files are present. When dependencies() is called, the returned list does NOT include 'typescript', '@types/react', or '@types/react-dom'.",
+      "testable": true,
+      "issues": [
+        "'no .tsx or .ts files are present' — note that vite.config.ts and tsconfig.json would be valid .ts/.json files. tsconfig.json would pass (it's .json, not .ts). However, if include_typescript=False, should vite.config.ts become vite.config.js? The scaffold would use `--template react` (no TS), creating vite.config.js. The files() method should follow suit. This AC does not explicitly test the vite.config extension, which is acceptable since AC-04 covers the vite.config.ts presence path.",
+        "'no .tsx or .ts files' could trip on vite.config.ts if the implementation doesn't change the config file extension when TS is off. The cross-method consistency matrix for include_typescript=False doesn't mention vite.config.ts or tsconfig.json."
+      ],
+      "suggested_fix": "Consider adding an explicit assertion about the bundler config file extension when TS is disabled: 'vite.config.js (not .ts) when bundler=vite', 'webpack.config.js (unchanged) when bundler=webpack'."
+    },
+    {
+      "criterion": "AC-10a",
+      "text": "Given include_router=True in config, when dependencies() is called, then the returned list includes 'react-router-dom'. When generate() is called, the executor command includes 'react-router-dom'.",
+      "testable": true,
+      "issues": [
+        "Cross-method consistency check (deps + generate) — good. Lessons from T-008 critical finding applied.",
+        "'executor command includes' — substring check, acceptable per T-008/T-009 pattern for generate() assertions.",
+        "Does NOT specify bundler for generate() — implied to be bundler='vite' since generate() is no-op for webpack. The AC should explicitly state bundler='vite' like AC-13/AC-14a-e do."
+      ],
+      "suggested_fix": "Explicitly state 'and bundler=\"vite\"' in the generate clause to match the pattern of AC-13/AC-14a-e."
+    },
+    {
+      "criterion": "AC-10b",
+      "text": "Given include_router=False (or absent from config), when dependencies() is called, then the returned list does NOT include 'react-router-dom'.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-11",
+      "text": "Given the React plugin, when directories() is called, then the returned list contains 'src/', 'src/components/', 'src/pages/', and 'public/'.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-12a",
+      "text": "Given default config ({\"react\": {}}), when dependencies() is called, then the returned list includes 'react' and 'react-dom', and does NOT include 'react-router-dom', 'tailwindcss', 'zustand', or '@reduxjs/toolkit'.",
+      "testable": true,
+      "issues": [
+        "Good — tests both positive AND negative assertions in one AC. Matches T-008/T-009 pattern.",
+        "Default config implies include_typescript=True (per AC-15 defaults). The AC does not assert presence of 'typescript' deps — those are covered by AC-08 (TS=True path). Complementary coverage is acceptable."
+      ],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-12b",
+      "text": "Given state_management='zustand' in config, when dependencies() is called, then the returned list includes 'zustand' and still includes 'react' and 'react-dom'.",
+      "testable": true,
+      "issues": [
+        "Checks base deps preserved — good regression catch. Same pattern as T-009 AC-11/AC-12 base-dep-preservation fix."
+      ],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-12c",
+      "text": "Given state_management='redux' in config, when dependencies() is called, then the returned list includes '@reduxjs/toolkit' and 'react-redux', and still includes 'react' and 'react-dom'.",
+      "testable": true,
+      "issues": [
+        "Same pattern as AC-12b. Base-deps-preservation assertion included."
+      ],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-13",
+      "text": "Given default config and bundler='vite', when generate() is called with a mock executor, then executor.run() is called at least once with a command list that includes 'npm', 'create', 'vite', and '--template' followed by a template string (e.g., 'react-ts'). The cwd parameter is passed to at least one executor.run() call.",
+      "testable": true,
+      "issues": [
+        "**MODERATE**: 'e.g., 'react-ts'' is ambiguous — 'e.g.' means 'for example', but the template string for the default config (which has include_typescript=True per AC-15) MUST be exactly 'react-ts'. Using 'e.g.' introduces non-determinism — could an implementer use 'react' and claim AC-13 passes? The test must assert exactly 'react-ts' for the default config. Replace 'e.g.' with 'specifically' or remove the parenthetical and specify the exact expected template string.",
+        "'contains' for command list — acceptable per T-009 pattern using subsequence check.",
+        "Explicitly takes default config + bundler='vite'. Good — no ambiguity about which config variant.",
+        "Tests both command content AND cwd parameter — thorough."
+      ],
+      "suggested_fix": "Replace '(e.g., 'react-ts')' with '(specifically 'react-ts', since include_typescript defaults to True)'."
+    },
+    {
+      "criterion": "AC-14a",
+      "text": "Given include_router=True and bundler='vite' in config, when generate() is called with a mock executor, then at least one executor.run() call includes 'react-router-dom' in its command list.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-14b",
+      "text": "Given include_tailwind=True and bundler='vite' in config, when generate() is called with a mock executor, then at least one executor.run() call includes 'tailwindcss' in its command list.",
+      "testable": true,
+      "issues": [
+        "'tailwindcss' — note that the matrix (include_tailwalk=True row) shows `npm install tailwindcss @tailwindcss/vite`. The AC only checks for 'tailwindcss' in the command. This is a substring check, so `@tailwindcss/vite` would also be captured if it's in the same command. But if `@tailwindcss/vite` is in a separate executor.run() call, the AC only verifies at least one call includes 'tailwindcss'. Acceptable for unit test."
+      ],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-14c",
+      "text": "Given state_management='zustand' and bundler='vite' in config, when generate() is called with a mock executor, then at least one executor.run() call includes 'zustand' in its command list.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-14d",
+      "text": "Given state_management='redux' and bundler='vite' in config, when generate() is called with a mock executor, then at least one executor.run() call includes '@reduxjs/toolkit' in its command list.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-14e",
+      "text": "Given include_typescript=False and bundler='vite' in config, when generate() is called with a mock executor, then at least one executor.run() call includes '--template' followed by 'react' (not 'react-ts') in its command list.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-15",
+      "text": "Given config={\"react\": {}} (empty config dict — plugin uses internal defaults), when files(), directories(), and dependencies() are called, then defaults are used: bundler defaults to 'vite', include_typescript defaults to True, include_tailwind defaults to False, state_management defaults to 'none'. No exception is raised.",
+      "testable": true,
+      "issues": [
+        "Strong error-case AC — tests 3 methods for no-exception AND correct defaults. Cross-method consistency verification.",
+        "Defaults explicitly enumerated (vite, True, False, none) — no ambiguity about what 'defaults' means.",
+        "This AC implicitly defines the expected defaults documented in API spec comments and Design Note 11."
+      ],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-16",
+      "text": "Given config={} (no 'react' key in ProjectSpec.config), when files(), directories(), and dependencies() are called, then no exception is raised and default values are used (the plugin accesses config via spec.config.get('react', {})).",
+      "testable": true,
+      "issues": [
+        "The parenthetical about .get() is implementation guidance — already in Design Note 1. Behavioral assertion (no exception + defaults) is what matters.",
+        "Tests 3 methods for absence of exception — strong error-case coverage. Same pattern as T-008 AC-12 / T-009 AC-18."
+      ],
+      "suggested_fix": "Consider adding explicit defaults: 'bundler defaults to 'vite', include_typescript defaults to True, etc.' to match AC-15's explicitness."
+    },
+    {
+      "criterion": "AC-17",
+      "text": "Given an invalid bundler value (e.g., 'invalid') in plugin config, when ValidationEngine.validate_plugin_config() is called with the plugin's questions (constructed inline per Design Note 5), then a ValidationError with severity 'error' is returned.",
+      "testable": true,
+      "issues": [
+        "Uses inline Question construction (Design Note 5) — avoids needing plugin to exist at test time. Correct test-first design.",
+        "Matches existing test_validation.py:226-240 pattern for choice validation (test_choice_invalid_option).",
+        "Severity='error' is enforced by validation.py:148-157 for CHOICE violations.",
+        "Design Note 5 correctly references the test_validation.py pattern."
+      ],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-18",
+      "text": "Given the ReactPlugin class, when instantiated, then display_name returns 'React' and description returns a non-empty string.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-19",
+      "text": "Given the forge.plugins.react package, when imported, then ReactPlugin is importable from forge.plugins.react.",
+      "testable": true,
+      "issues": [
+        "Under test-first, this test will fail with ModuleNotFoundError — expected test-first gate behavior.",
+        "Design Note 4 requires react/__init__.py to import from forge.domain (e.g., 'from forge.domain import ProjectSpec as _  # noqa: F401') to satisfy the AC-4 scanner's test_allowed_domain_imports_are_permitted check."
+      ],
+      "suggested_fix": null
+    }
+  ],
+  "infrastructure_readiness": [
+    {
+      "requirement": "PluginBase + 4 mixins (Configurable, FileProvider, CommandRunner, DependencyProvider)",
+      "status": "EXISTS",
+      "location": "src/forge/plugins/base.py",
+      "notes": "All 4 mixins defined. ReactPlugin inherits all four. DependencyProvider.dependencies(self, spec: ProjectSpec) already has `spec` parameter — previously BLOCKING in T-008, NOW VERIFIED FIXED."
+    },
+    {
+      "requirement": "DependencyProvider.dependencies(self, spec) signature",
+      "status": "EXISTS",
+      "location": "src/forge/plugins/base.py:49-51",
+      "notes": "Signature is `def dependencies(self, spec: ProjectSpec) -> list[str]:` — matches API spec. Previously a blocking issue in T-008, resolved and verified in T-008 Round 3."
+    },
+    {
+      "requirement": "PluginExecutionEngine passes spec to dependencies()",
+      "status": "EXISTS",
+      "location": "src/forge/generation/stages/plugin_execution_engine.py:57",
+      "notes": "Line 57: `txn.requirements.extend(plugin.dependencies(spec))` — spec correctly passed. No changes needed."
+    },
+    {
+      "requirement": "CommandRunner.generate() signature compatibility",
+      "status": "EXISTS",
+      "location": "src/forge/plugins/base.py:44-46",
+      "notes": "Signature: `def generate(self, spec: ProjectSpec, target_dir: Path, executor: ProcessExecutor) -> None`. AC-4 scanner requires plugin.py to use untyped `executor` or `Any`. Design Note 4 correctly addresses this — base.py uses TYPE_CHECKING guard for ProcessExecutor import."
+    },
+    {
+      "requirement": "AC-4 scanner — forbidden imports check",
+      "status": "EXISTS",
+      "location": "tests/unit/test_plugin_base.py",
+      "notes": "Scanner uses rglob('*.py'). INFRA_EXEMPT_FILES = {'base.py'}. Every .py under plugins/ must import from forge.domain. Plugins must NOT import from forge.infrastructure (Design Note 4). All fixes applied during T-008."
+    },
+    {
+      "requirement": "ValidationEngine.validate_plugin_config() CHOICE validation",
+      "status": "EXISTS",
+      "location": "src/forge/generation/validation.py:148-157",
+      "notes": "CHOICE type validation exists. Emits error severity for out-of-range options. AC-17 uses this exact code path. Existing test_validation.py:test_choice_invalid_option provides pattern reference."
+    },
+    {
+      "requirement": "Entry point registration",
+      "status": "EXISTS",
+      "location": "pyproject.toml:17",
+      "notes": "Already registered as `react = 'forge.plugins.react:ReactPlugin'`. AC-01 class attribute `name = 'react'` must match. Design Note 3 correctly documents this."
+    },
+    {
+      "requirement": "TemplateDefinition with frontend_id field",
+      "status": "EXISTS",
+      "location": "src/forge/domain/project_spec.py:24",
+      "notes": "TemplateDefinition has `frontend_id: str | None = None` — the PluginExecutionEngine resolves both backend_id AND frontend_id (line 28). AC-02a/b use `frontend_id='react'` correctly."
+    },
+    {
+      "requirement": "Mock ProcessExecutor for generate() ACs",
+      "status": "EXISTS",
+      "location": "tests/unit/_shared.py / conftest.py",
+      "notes": "MagicMock serves as mock executor — well-established pattern from T-008. MockCommandPlugin.generate() already accepts executor parameter. Plugin test file will use inline import + MagicMock."
+    },
+    {
+      "requirement": "_MockTransaction pattern availability",
+      "status": "EXISTS",
+      "location": "tests/unit/test_plugin_fastapi.py:14-28",
+      "notes": "Local _MockTransaction pattern defined in test_plugin_fastapi.py. React test file should define its own local copy (no cross-layer imports). Pattern well-established from T-008/T-009."
+    },
+    {
+      "requirement": "Question objects with proper constructors",
+      "status": "EXISTS",
+      "location": "src/forge/domain/__init__.py",
+      "notes": "Question dataclass has `key`, `label`, `question_type`, `required`, `default`, `options`, etc. All fields needed by AC-03 exist. Design Note 11 requires explicit `default=` values."
+    },
+    {
+      "requirement": "ProcessExecutor in infrastructure layer",
+      "status": "EXISTS",
+      "location": "src/forge/infrastructure/process_executor.py",
+      "notes": "ProcessExecutor class exists. Not importable by plugin.py (AC-4 scanner). generate() uses untyped executor parameter — Design Note 4 correctly enforces this."
+    },
+    {
+      "requirement": "Fixture scopes for resource-intensive operations",
+      "status": "EXISTS",
+      "location": "tests/unit/conftest.py",
+      "notes": "All fixtures use function scope (default). No resource-intensive operations in T-010 tests (plugin instantiation, file string generation, mock assertions). No fixture scope concerns."
+    }
+  ],
+  "coverage_analysis": {
+    "happy_path": "COVERED",
+    "error_cases": "COVERED",
+    "edge_cases": "PARTIALLY_COVERED",
+    "plugin_isolation_tested": "YES",
+    "details": {
+      "happy_path": [
+        "AC-01: plugin.name == 'react' — class attribute check",
+        "AC-02a: files() returns core file paths (src/App.tsx, src/main.tsx, public/index.html) as GeneratedFile with Path objects",
+        "AC-02b: PluginExecutionEngine (simulated) stages files and appends deps",
+        "AC-03: questions() returns proper keys, types, options, uniqueness",
+        "AC-11: directories() returns src/, src/components/, src/pages/, public/",
+        "AC-12a: dependencies() returns base set (react, react-dom) without extras",
+        "AC-13: generate() calls executor.run() with vite scaffold command + cwd",
+        "AC-18: display_name='React', description non-empty",
+        "AC-19: ReactPlugin importable from forge.plugins.react"
+      ],
+      "error_cases": [
+        "AC-15: empty config dict → defaults used, no exception",
+        "AC-16: missing 'react' key → no exception, defaults used",
+        "AC-17: invalid bundler → ValidationEngine returns error severity"
+      ],
+      "edge_cases": [
+        "AC-04: bundler=vite → vite.config.ts present, webpack.config.js absent",
+        "AC-05: bundler=webpack → webpack.config.js present, vite.config.ts absent",
+        "AC-06: include_tailwind=True → tailwind.config.js + postcss.config.js present",
+        "AC-07: include_tailwind=False/absent → tailwind.config.js absent",
+        "AC-08: include_typescript=True → .tsx files present, no .jsx; TS deps present",
+        "AC-09: include_typescript=False → .jsx files present, no .tsx; TS deps absent",
+        "AC-10a: include_router=True → deps include react-router-dom; generate includes it",
+        "AC-10b: include_router=False/absent → deps exclude react-router-dom",
+        "AC-12b: state_management=zustand → deps include zustand + base preserved",
+        "AC-12c: state_management=redux → deps include @reduxjs/toolkit + base preserved",
+        "AC-14a: generate with router → command includes react-router-dom",
+        "AC-14b: generate with tailwind → command includes tailwindcss",
+        "AC-14c: generate with zustand → command includes zustand",
+        "AC-14d: generate with redux → command includes @reduxjs/toolkit",
+        "AC-14e: generate with no TS → --template react (not react-ts)"
+      ],
+      "gaps": [
+        "MISSING: generate() with bundler=webpack — no AC tests that generate() is a no-op. Design Note 9 says 'When bundler=webpack, generate() is a no-op.' If the implementation accidentally calls executor.run() for webpack, no AC catches it.",
+        "MISSING: AC-10a (include_router=True) does not specify bundler='vite', unlike AC-13/AC-14a-e which all explicitly state 'bundler=vite'. For webpack, generate() is no-op, so AC-10a's generate clause would expect a no-op. This ambiguity could lead to confusion during test writing.",
+        "MISSING: AC-08/AC-09 don't test extension of vite.config.ts vs vite.config.js when include_typescript toggles. The scaffold creates different extensions for TS vs non-TS templates. If files() doesn't match, generated project could have mixed extensions.",
+        "MISSING: No AC tests the combination of bundler=webpack + include_typescript=False. The cross-method consistency matrix's 'All above combined' row covers all variants combined, but no single AC tests individual combinations beyond the ones listed.",
+        "MISSING: AC-12a base set does not assert presence of TypeScript deps (typescript, @types/react, @types/react-dom) for the default config. While AC-08 covers this, AC-12a's 'default config' includes include_typescript=True (per AC-15), so the base deps set should arguably include TS deps. The current AC-12a only asserts absence of extras, not presence of TS deps."
+      ]
+    }
+  },
+  "design_notes_verification": [
+    {
+      "id": "DN1",
+      "text": "Use spec.config.get('react', {}) via _config(spec) static helper",
+      "accurate": true,
+      "issues": []
+    },
+    {
+      "id": "DN2",
+      "text": "ValidationEngine owns input validation",
+      "accurate": true,
+      "issues": []
+    },
+    {
+      "id": "DN3",
+      "text": "Entry point registration at pyproject.toml:17",
+      "accurate": true,
+      "issues": [
+        "Verified: pyproject.toml:17 has `react = 'forge.plugins.react:ReactPlugin'`. Correct."
+      ]
+    },
+    {
+      "id": "DN4",
+      "text": "AC-4 scanner compliance: every .py under plugins/ must import from forge.domain",
+      "accurate": true,
+      "issues": []
+    },
+    {
+      "id": "DN5",
+      "text": "Test-first AC-17 construction (inline Question objects, not plugin.questions())",
+      "accurate": true,
+      "issues": [
+        "Correctly cross-references test_validation.py:test_choice_invalid_option pattern."
+      ]
+    },
+    {
+      "id": "DN6",
+      "text": "Cross-method consistency: files(), dependencies(), generate() must agree",
+      "accurate": true,
+      "issues": []
+    },
+    {
+      "id": "DN7",
+      "text": "templates/ directory not used; inline f-strings only",
+      "accurate": true,
+      "issues": []
+    },
+    {
+      "id": "DN8",
+      "text": "state_management is config passthrough — no generated code in this ticket",
+      "accurate": true,
+      "issues": []
+    },
+    {
+      "id": "DN9",
+      "text": "Webpack generate() is no-op; Vite generate() runs create-vite",
+      "accurate": true,
+      "issues": [
+        "No AC tests the webpack no-op behavior of generate(). See coverage gap."
+      ]
+    },
+    {
+      "id": "DN10",
+      "text": "generate() duplicates dependencies() conditional logic — intentional, different consumers",
+      "accurate": true,
+      "issues": []
+    },
+    {
+      "id": "DN11",
+      "text": "Question.default values — all explicit default= values",
+      "accurate": true,
+      "issues": [
+        "T-009 post-mortem Lesson 1 recommends showing `default=` in Question() constructor pseudocode, not just in comments. The API spec shows defaults in comments only. Consider adding `default=` to the Question() calls in the API spec for clarity."
+      ]
+    },
+    {
+      "id": "DN12",
+      "text": "Scaffold + files() overlap — files() generates scaffold files too; staging overwrite handles duplication",
+      "accurate": false,
+      "issues": [
+        "**CONTRADICTION**: The cross-method consistency matrix (Default row note) says 'files() injects only non-scaffold files' which directly contradicts DN12's claim that files() generates ALL scaffold files. One of these is wrong. AC-02a expects public/index.html in files() output, which aligns with DN12. If the matrix note is followed instead, AC-02a's assertion about public/index.html would be incorrect.",
+        "Recommended resolution: Update the matrix parenthetical to match DN12: 'scaffold creates these files too; files() generates all listed files — staging overwrite handles duplication safely.' Remove the 'only non-scaffold files' language."
+      ]
+    }
+  ],
+  "issues": [
+    {
+      "id": "MODERATE-1",
+      "severity": "MODERATE",
+      "area": "Design Note 12 vs cross-method consistency matrix contradiction",
+      "description": "Design Note 12 states: 'The plugin's files() also generates these files (the staging directory's overwrite semantics handle the duplication safely)' — meaning files() generates ALL scaffold files including public/index.html. However, the cross-method consistency matrix (Default row) includes the note: 'scaffold creates public/ dir; files() injects only non-scaffold files' — directly contradicting DN12. AC-02a expects public/index.html in files() output, consistent with DN12. If an implementer follows the matrix note, they would NOT include public/index.html in files(), making AC-02a fail. This ambiguity MUST be resolved before test writing.",
+      "recommended_fix": "Update the cross-method consistency matrix note to: 'files() generates all listed files — scaffold creates the same files, staging overwrite handles duplication safely.' Remove 'only non-scaffold files' language.",
+      "can_block_implementation": false,
+      "rationale": "An attentive implementer who reads the full ticket will prioritize DN12 over the matrix note since DN12 is more explicit about the design intent. However, the contradiction creates risk of a wrong implementation."
+    },
+    {
+      "id": "MODERATE-2",
+      "severity": "MODERATE",
+      "area": "AC-13 'e.g.' ambiguity for template string",
+      "description": "AC-13 says '--template' followed by a template string (e.g., 'react-ts'). The 'e.g.' introduces non-determinism — it implies the template string is just an example, but for the default config (which has include_typescript=True per AC-15), the template MUST be 'react-ts'. An implementer could read 'e.g.' and think they could use a different template (e.g., just 'react') and pass the AC.",
+      "recommended_fix": "Replace '(e.g., 'react-ts')' with '(specifically 'react-ts', since include_typescript defaults to True)'.",
+      "can_block_implementation": false,
+      "rationale": "The surrounding ACs (especially AC-14e which explicitly tests TS=False → 'react') provide enough context to disambiguate, but the 'e.g.' creates unnecessary ambiguity."
+    },
+    {
+      "id": "MODERATE-3",
+      "severity": "MODERATE",
+      "area": "Missing AC for generate() with bundler=webpack (no-op)",
+      "description": "Design Note 9 states that when bundler=webpack, generate() is a no-op. However, no AC verifies this behavior. If the implementation accidentally calls executor.run() for webpack (e.g., to install npm deps), the error would go undetected. All generate() ACs (AC-13, AC-14a-e) explicitly use bundler='vite'. This is the same class of coverage gap that led to the T-008 critical bug where generate() didn't implement conditional logic correctly.",
+      "recommended_fix": "Add an AC: 'Given bundler=webpack and default config, when generate() is called with a mock executor, then executor.run() is NOT called.' Or extend AC-13 to include a webpack variant.",
+      "can_block_implementation": false,
+      "rationale": "An attentive implementer who reads DN9 will implement webpack as no-op. The gap would likely be caught during code review if webpack generate() accidentally calls executor.run()."
+    },
+    {
+      "id": "NB-1",
+      "severity": "LOW",
+      "area": "AC-02a/AC-02b loose 'contains' language",
+      "description": "Same pattern as T-008 NB-2 / T-009 LOW-1. 'Contains' is slightly ambiguous between minimum cardinality and set membership. The test should use exact set membership for the listed paths.",
+      "recommended_fix": "Replace 'contains' with 'includes' or specify 'at minimum these paths' (same pattern as T-008/T-009)."
+    },
+    {
+      "id": "NB-2",
+      "severity": "LOW",
+      "area": "AC-02b combines FileProvider + DependencyProvider",
+      "description": "AC-02b tests both FileProvider staging AND DependencyProvider appending in one AC. If the test fails, it's unclear which mixin is broken. Same pattern as T-008 NB-3 / T-009 LOW note.",
+      "recommended_fix": "Consider splitting into 2b_i (stage_file assertions) and 2b_ii (requirements assertions) for failure isolation clarity."
+    },
+    {
+      "id": "NB-3",
+      "severity": "LOW",
+      "area": "AC-10a missing bundler='vite' for generate clause",
+      "description": "AC-10a's dependencies clause is unambiguous (dependencies() doesn't care about bundler), but its generate clause does not specify bundler='vite'. All other generate() ACs (AC-13, AC-14a-e) explicitly state 'bundler=vite'. For consistency and clarity, AC-10a's generate clause should also specify bundler='vite', since generate() is no-op for webpack.",
+      "recommended_fix": "Add 'and bundler=\"vite\"' to the generate clause of AC-10a."
+    },
+    {
+      "id": "NB-4",
+      "severity": "LOW",
+      "area": "AC-06 combines TS-enabled and TS-disabled content assertions",
+      "description": "AC-06's content assertion has a conditional branch ('{ts,tsx}' or '{js,jsx}') depending on include_typescript. The AC should either parametrize the content check or split into two sub-ACs for clarity.",
+      "recommended_fix": "Consider splitting the content assertion into TS-enabled and TS-disabled variants, or explicitly parametrizing the AC."
+    },
+    {
+      "id": "NB-5",
+      "severity": "LOW",
+      "area": "AC-12a base deps don't assert TS deps presence",
+      "description": "AC-12a tests the default config (which has include_typescript=True per AC-15). The AC asserts presence of 'react'/'react-dom' and absence of extras, but does NOT assert presence of 'typescript', '@types/react', '@types/react-dom'. While AC-08 covers the TS deps presence for include_typescript=True, AC-12a is the default-config AC and should ideally assert the full default dependency set including TS packages.",
+      "recommended_fix": "Add 'and includes \"typescript\", \"@types/react\", \"@types/react-dom\"' to AC-12a's positive assertions."
+    },
+    {
+      "id": "NB-6",
+      "severity": "LOW",
+      "area": "Cross-method consistency matrix lacks bundler=webpack + include_typescript=False combined row",
+      "description": "The matrix covers individual config flags (bundler=webpack, TS=False, tailwind=True, etc.) individually, but doesn't show the bundler=webpack + TS=False combination. This combination would require webpack.config.js + .jsx files + no vite config — a less common but valid config.",
+      "recommended_fix": "Add a row for bundler=webpack + include_typescript=False to the matrix, or document that the existing individual rows compose."
+    },
+    {
+      "id": "NB-7",
+      "severity": "INFO",
+      "area": "Question.default values not shown in API spec pseudocode",
+      "description": "T-009 post-mortem Lesson 1 recommends showing `default=` in Question() constructor calls, not just in comments. The API spec shows defaults in comments (e.g., 'default: vite') but not in the Question() constructor. Design Note 11 asserts they have explicit defaults, which is sufficient for implementation, but the API spec could be more explicit.",
+      "recommended_fix": "Add `default='vite'`, `default=True`, `default=False`, `default='none'` to the respective Question() constructor calls in the API spec."
+    }
+  ],
+  "verdict": "CHANGES REQUESTED",
+  "summary": "T-010 is well-structured and closely follows the established T-008/T-009 plugin pattern. All 19 ACs are individually testable as unit tests using the existing test infrastructure (MockTransaction, mock executor, ValidationEngine, inline Question construction). The DependencyProvider interface has the `dependencies(self, spec)` signature — previously a blocking issue in T-008, now verified correct. The entry point is already registered. The AC-4 scanner infrastructure is in place. No blocking issues exist.\n\nThree MODERATE issues should be resolved before proceeding:\n1. MODERATE-1: Contradiction between Design Note 12 (files() generates ALL scaffold files) and the cross-method consistency matrix note (files() injects only non-scaffold files). This ambiguity could lead to an incorrect files() implementation.\n2. MODERATE-2: AC-13's 'e.g., 'react-ts'' introduces non-determinism. The template string must be exactly 'react-ts' for the default config.\n3. MODERATE-3: No AC tests generate() as no-op for bundler=webpack — a coverage gap that mirrors the pre-fix pattern from T-008's critical bug.\n\nSeven non-blocking (LOW/INFO) issues are also documented: loose 'contains' assertions, combined AC-02b, missing bundler specifier in AC-10a, conditional content in AC-06, missing TS deps in AC-12a defaults assertion, missing matrix row for webpack+TS=False combination, and API spec pseudocode defaults visibility.\n\nOnce the three MODERATE issues are resolved, the ticket is ready for test-first implementation. The 19 ACs provide comprehensive coverage of all 4 capability mixins, including error cases, bundle variants, TypeScript toggling, tailwind/router/state_management configs, and cross-method consistency."
+}

@@ -1,0 +1,248 @@
+{
+  "ac_validation": [
+    {
+      "criterion": "AC-01",
+      "text": "Given a ReviewScreen(orchestrator) with ProjectSpec having backend_id=\"fastapi\" and frontend_id=\"react\", when on_enter() is called, then the QTreeWidget (objectName=\"review_tree\") displays the display name \"FastAPI\" (resolved via orchestrator.get_available_backends()), the display name \"React\" (resolved via orchestrator.get_available_frontends()), and an estimated duration from orchestrator.estimate_duration().",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": ""
+    },
+    {
+      "criterion": "AC-02",
+      "text": "Given a ReviewScreen(orchestrator) where orchestrator.estimate_duration() returns DurationEstimate(estimated_seconds=15, has_slow_steps=True, slow_step_details=[\"npm install\"]), when on_enter() is called, then a red QLabel (objectName=\"warning_label\") with text containing \"Warning: Estimated duration exceeds 10s\" and the slow step details are visible.",
+      "testable": true,
+      "issues": [
+        "RED styling mechanism unspecified: AC says 'red QLabel' but does not specify whether red is applied via setStyleSheet('color: red;'), setPalette(), HTML in rich text QLabel, or other mechanism. Test assertion must know which property to check.",
+        "The text 'Warning: Estimated duration exceeds 10s' is specified but the threshold '10s' appears nowhere else in the spec. Consider whether this threshold is configurable or a hardcoded constant."
+      ],
+      "suggested_fix": "Specify the styling mechanism: 'a QLabel (objectName=\"warning_label\") with setStyleSheet(\"color: red;\") containing text...' OR simply remove 'red' from the requirement if color is not the primary concern. Also note the 10s threshold as a named constant or document it as a hardcoded value."
+    },
+    {
+      "criterion": "AC-03",
+      "text": "Given a GenerationScreen with a worker injected via set_worker(), when on_progress(\"PluginExecution\", 3) is called, then the stage QLabel text is \"PluginExecution\" and the QProgressBar maximum is 3.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": ""
+    },
+    {
+      "criterion": "AC-04",
+      "text": "Given a GenerationScreen with a worker injected, when on_log(\"Creating output dir\", \"info\") is called, then QPlainTextEdit.toPlainText() contains the string \"Creating output dir\".",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": ""
+    },
+    {
+      "criterion": "AC-05",
+      "text": "Given a MainWindow at screen index 4 (GenerationScreen) with a worker injected, when _on_generation_finished is called with GenerationResult(success=True, error=None, output_path=Path(\"/tmp/out\")), then the Cancel button is hidden, and the \"Open Project\" and \"Close\" buttons are visible and enabled.",
+      "testable": true,
+      "issues": [
+        "Wording 'with a worker injected' contradicts the mock strategy table which states 'no worker needed' for button state tests via direct handler calls. The test calls _on_generation_finished() directly, not through signals, so no worker is required."
+      ],
+      "suggested_fix": "Rephrase to: 'Given a MainWindow at screen index 4 with a GenerationScreen installed, when _on_generation_finished is called...'"
+    },
+    {
+      "criterion": "AC-06",
+      "text": "Given a MainWindow at screen index 4 (GenerationScreen) with a worker injected, when _on_generation_error is called with \"Generation failed at stage PluginExecution\", then the log widget contains a red-formatted error line, a \"Close\" button is visible, and the Cancel button is hidden (generation ended).",
+      "testable": true,
+      "issues": [
+        "Wording 'with a worker injected' — same inconsistency as AC-05. Mock strategy says: no worker needed for direct handler tests.",
+        "'red-formatted error line' mechanism unspecified. For QPlainTextEdit, red formatting could be achieved via appendHtml('<span style=\"color:red\">...</span>'), QTextCharFormat, or setStyleSheet. Test assertion needs to know which property to check.",
+        "Note: worker.error signal (to which _on_generation_error is connected in _create_generation_worker()) is NEVER EMITTED by GenerationWorker.run() — see MODERATE issue M-1 in blocking_issues. The handler is testable directly but the production wiring is dead code."
+      ],
+      "suggested_fix": "Specify red-formatting mechanism (recommendation: appendHtml with <span style='color:red'> for QPlainTextEdit). Fix the dead error signal path in GenerationWorker or remove the unused wiring."
+    },
+    {
+      "criterion": "AC-07",
+      "text": "Given a MainWindow at screen index 3 (ReviewScreen), when next_screen() is called and the output directory does not exist, then the confirm dialog is skipped and navigation proceeds to index 4 (GenerationScreen).",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": ""
+    },
+    {
+      "criterion": "AC-08",
+      "text": "Given a MainWindow at screen index 3, when next_screen() is called, the output directory exists, and show_confirm returns QMessageBox.StandardButton.Yes, then navigation proceeds to index 4 and the GenerationWorker is created with overwrite_confirmed=True.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": ""
+    },
+    {
+      "criterion": "AC-09",
+      "text": "Given a MainWindow at screen index 3, when next_screen() is called, the output directory exists, and show_confirm returns QMessageBox.StandardButton.No, then the user stays at index 3 (ReviewScreen) and no worker is created.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": ""
+    },
+    {
+      "criterion": "AC-10",
+      "text": "Given a MainWindow at screen index 3, when next_screen() is called and checking the output directory raises an exception, then show_error is called with the error message and the user stays at index 3.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": ""
+    },
+    {
+      "criterion": "AC-11",
+      "text": "Given a GenerationScreen with a worker injected via set_worker(), when on_enter() is called, then the screen connects to the worker's progress, log, error, and finished signals. (Note: This is implicitly verified by AC-03–AC-06. If the connection is missing, AC-03–AC-06 fail since signals never reach the screen. Documented here for completeness as a design constraint, not a standalone test case.)",
+      "testable": false,
+      "issues": [
+        "Contradicts the passive pattern: GenerationScreen is explicitly a 'passive display widget' — MainWindow owns ALL signal connections, NOT the screen. The AC text says 'screen connects to signals' but the design says MainWindow connects signals. The note correctly clarifies this is implicit, but the AC statement itself is architecturally incorrect.",
+        "Marked as 'not a standalone test case' — acceptable as design documentation."
+      ],
+      "suggested_fix": "Re-express as a design constraint note without the Given/When/Then wrapper that implies a test: 'AC-11 (design constraint): MainWindow owns all signal connections from GenerationWorker to GenerationScreen's passive methods (on_progress, on_log, on_error, on_finished). Verified implicitly by AC-03–AC-06.'"
+    },
+    {
+      "criterion": "AC-12",
+      "text": "Given a GenerationScreen with a worker injected, when on_exit() is called while generation is running (worker not finished), then worker.cancel() is called.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": ""
+    },
+    {
+      "criterion": "AC-13",
+      "text": "Given a GenerationScreen without a worker (idle state), when on_enter() is called, then the progress bar shows 0%, the stage label shows \"Ready\", and the log widget is empty.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": ""
+    },
+    {
+      "criterion": "AC-14",
+      "text": "Given a GenerationScreen at screen index 4 during active generation, when the user clicks the Cancel button, then worker.cancel() is called and the Cancel button becomes disabled.",
+      "testable": true,
+      "issues": [
+        "NOTE: cancel_generation() disables the Cancel button, but _update_navigation_buttons() (called on subsequent error/finished handlers) unconditionally sets _cancel_btn.setEnabled(True) for the 'during generation' branch, potentially re-enabling a disabled Cancel button. See MODERATE issue M-3."
+      ],
+      "suggested_fix": "Guard the setEnabled(True) in _update_navigation_buttons() with a check that generation is still running (is_generating)."
+    },
+    {
+      "criterion": "AC-15",
+      "text": "Given a GenerationScreen at screen index 4 after generation has finished (success or failure), when cancel_generation() is called directly, then no action is taken (idempotent — tested via direct method call, not button click, since Cancel is hidden on success per AC-05).",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": ""
+    },
+    {
+      "criterion": "AC-16",
+      "text": "Given a GenerationScreen at screen index 4 after successful generation, when the \"Open Project\" button is clicked, then QDesktopServices.openUrl(QUrl.fromLocalFile(str(output_path))) is called to open the output directory in the file manager.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": ""
+    }
+  ],
+  "infrastructure_readiness": [
+    {
+      "requirement": "mock_orchestrator with estimate_duration",
+      "status": "EXISTS",
+      "location": "tests/unit/conftest.py:63-71",
+      "notes": "mock_orchestrator fixture exists with MagicMock(spec=Orchestrator). estimate_duration is a method on Orchestrator (src/forge/generation/orchestrator.py:93). Ticket says to add 'estimate_duration config' to fixture — mock_orchestrator automatically supports it via MagicMock, but tests should configure per-test return values. Recommend: move default mock if needed."
+    },
+    {
+      "requirement": "review_screen and generation_screen fixtures",
+      "status": "MISSING",
+      "location": "ticket spec (lines 446-448) specifies these as new fixtures to create",
+      "notes": "These fixtures do not exist yet — they will be created in tests/unit/test_wizard_screens.py as part of implementation. The ticket provides clear fixture recipes."
+    },
+    {
+      "requirement": "mock_strategy for GenerationScreen passive methods (screen-level)",
+      "status": "EXISTS",
+      "location": "ticket spec (line 454-456)",
+      "notes": "Clear: test passive methods by calling them directly on the screen instance. No worker mock needed for screen-level tests."
+    },
+    {
+      "requirement": "mock_strategy for GenerationScreen MainWindow integration (AC-05/AC-06)",
+      "status": "EXISTS",
+      "location": "ticket spec (line 457)",
+      "notes": "Clear: test via _on_generation_finished and _on_generation_error handlers directly. Suggests QSignalSpy or QObject subclass with real Signal objects for optional worker mock."
+    },
+    {
+      "requirement": "Path.cwd() mocking approach",
+      "status": "EXISTS",
+      "location": "ticket spec (line 484)",
+      "notes": "Detailed: monkeypatch.setattr(Path, 'cwd', lambda: Path('/tmp/test')). Combined with monkeypatch.setattr(Path, 'exists') for deterministic behavior."
+    },
+    {
+      "requirement": "TestAC6_GenerationRequestedSignal migration",
+      "status": "EXISTS",
+      "location": "ticket spec (lines 441-442)",
+      "notes": "Detailed migration recipe: mock Path.exists() to False, mock Path.cwd() to deterministic path. Prevents next_screen() from triggering real dialog."
+    },
+    {
+      "requirement": "QThread lifecycle documentation in tests",
+      "status": "EXISTS",
+      "location": "ticket spec (line 485)",
+      "notes": "Covers thread.quit(), thread.wait(5000) in teardown, QTest.qWait(10) for signal processing, and MagicMock(spec=GenerationWorker) preference to avoid threading entirely."
+    },
+    {
+      "requirement": "_mock_plugin helper for ReviewScreen tests",
+      "status": "EXISTS (shared)",
+      "location": "tests/unit/test_wizard_screens.py:24-29 (existing, reusable)",
+      "notes": "The _mock_plugin(display_name, name, description) helper already exists in test_wizard_screens.py and follows the post-mortem guidance (no 'name' MagicMock kwarg). ReviewScreen tests can reuse this."
+    },
+    {
+      "requirement": "main_window fixture migration to real screens at indices 3-4",
+      "status": "EXISTS",
+      "location": "ticket spec (lines 438-442)",
+      "notes": "Clearly documents which fixtures need migration: main_window in test_main_window.py and integration fixtures in test_wizard_screens.py."
+    }
+  ],
+  "coverage_analysis": {
+    "happy_path": "COVERED",
+    "error_cases": "COVERED",
+    "edge_cases": "COVERED",
+    "plugin_isolation_tested": "YES"
+  },
+  "verdict": "NEEDS_REVISION",
+  "blocking_issues": [
+    "M-1 (MODERATE): Dead error signal path — GenerationWorker.error=Signal(str) is defined in workers.py:55 but NEVER emitted in GenerationWorker.run(). The wire self._worker.error.connect(self._on_generation_error) in _create_generation_worker() will never fire in production. AC-06 tests _on_generation_error by direct invocation (valid) but the production signal chain is non-functional. Workers.py must either emit error in run() for non-fatal errors (via orchestrator's progress reporter), or the wiring in _create_generation_worker() must be removed. Note: QtProgressReporter.error_occurred (Signal(str, bool)) also exists but is not connected to anything either — it's emitted by QtProgressReporter.on_error() which the orchestrator calls for recoverable errors.",
+    "M-2 (MODERATE): Worker/thread resource leak — Neither _on_generation_finished nor _on_generation_error cleans up _worker or _thread references (e.g., self._worker = None, self._thread = None). After generation completes, old QObject/thread objects remain on the heap. If the user navigates back to screen 3 and generates again (possible via screen 3→4 re-entry), a new worker and thread are created while old ones accumulate. GenerationWorker also does not null out its _finished guard after generation, which would prevent reuse. At minimum, cleanup should be documented; ideally, handlers should call del or set to None.",
+    "M-3 (MODERATE): Cancel button re-enable race — cancel_generation() disables the Cancel button (self._cancel_btn.setEnabled(False) at line 335-336). However, _update_navigation_buttons() during-generation branch unconditionally sets self._cancel_btn.setEnabled(True) at line 272. If _update_navigation_buttons() is called between cancel_generation() and the eventual on_error/on_finished (e.g., via a progress signal's handler chain or a race between cancel and generation completion), the Cancel button would be spuriously re-enabled. Mitigation: _update_navigation_buttons() should check worker state: if the worker is cancelled, don't re-enable the Cancel button. Alternatively, ensure only on_error/on_finished calls _update_navigation_buttons() during generation (already true for progress/log — they don't call it). But navigate_to() also calls _update_navigation_buttons(), so cancelling and then programmatically re-navigating would re-enable."
+  ],
+  "additional_issues": [
+    {
+      "severity": "LOW",
+      "id": "L-1",
+      "description": "AC-02 'red QLabel' styling mechanism unspecified. Does not specify how red styling is achieved (styleSheet, palette, rich text HTML, etc.). Test needs a concrete property to assert.",
+      "fix": "Specify: 'a QLabel (objectName=\"warning_label\") with styleSheet containing \"color: red\" (or equivalent).'"
+    },
+    {
+      "severity": "LOW",
+      "id": "L-2",
+      "description": "AC-06 'red-formatted error line' formatting mechanism unspecified for QPlainTextEdit. Not clear whether appendHtml, QTextCharFormat, or setStyleSheet is used.",
+      "fix": "Specify: 'appendHtml(\"<span style=\\\"color:red\\\">...\")' as the mechanism for red error lines in the log widget."
+    },
+    {
+      "severity": "LOW",
+      "id": "L-3",
+      "description": "_on_generation_finished sets 'self._pending_output_dir = None' but this attribute is never initialized in __init__ or set elsewhere in the ticket spec. This is either a stale reference from a previous design or an undocumented attribute.",
+      "fix": "Either remove 'self._pending_output_dir = None' from _on_generation_finished, or add 'self._pending_output_dir: Path | None = None' to the __init__ listing (alongside _generation_finished and _generation_output_path)."
+    },
+    {
+      "severity": "LOW",
+      "id": "L-4",
+      "description": "AC-05 and AC-06 wording says 'with a worker injected' but mock strategy explicitly states testing via direct handler calls with no worker needed. Minor wording inconsistency.",
+      "fix": "Rephrase to 'with a GenerationScreen installed at index 4' or remove the worker reference."
+    },
+    {
+      "severity": "LOW",
+      "id": "L-5",
+      "description": "Cancel button disconnect in navigate_to(4) injection (line 232-235) uses 'try: self._cancel_btn.clicked.disconnect()' which only disconnects ONE slot. If navigate_to(4) is called multiple times (e.g., re-entering screen 4 after going back), old connections from previous reconnects accumulate.",
+      "fix": "Use a loop to disconnect all: 'while self._cancel_btn.receivers(self._cancel_btn.clicked) > 0: self._cancel_btn.clicked.disconnect()' wrapped in try/except. Or maintain a reference to the previous slot."
+    },
+    {
+      "severity": "LOW",
+      "id": "L-6",
+      "description": "AC-11 text ('screen connects to the worker's signals') contradicts the passive pattern architecture where MainWindow owns all signal routing. The note correctly clarifies, but the AC text is misleading.",
+      "fix": "Rewrite AC-11 as a pure design constraint note without Given/When/Then structure, as suggested in ac_validation above."
+    }
+  ],
+  "round_4_fixes_verified": {
+    "B-5": "PASS — GenerationScreen is a passive display widget, MainWindow owns all signal routing via on_progress/on_log/on_error/on_finished methods",
+    "M-6": "PASS — on_enter() body documented with idle-state reset; all 4 passive methods documented in API spec",
+    "M-7": "PASS — Both on_finished() and on_error() reset self._is_generating = False",
+    "M-8": "PASS — Mock strategy table updated for passive method testing (screen-level: direct calls, MainWindow: handler invocation)",
+    "M-9": "PASS — Path.cwd() mocking documented with monkeypatch recipe in Implementation Notes",
+    "M-10": "PASS — TestAC6 migration includes explicit Path.exists() and Path.cwd() mocking documentation",
+    "L-6": "PASS — objectName='review_tree' present in AC-01",
+    "L-7": "PASS — AC-05/AC-06 start with 'Given a MainWindow at screen index 4'",
+    "L-8": "PASS — AC-06 correctly does not mention Open button (hidden on error since _generation_output_path is None)",
+    "L-9": "PASS — AC-16 uses QUrl.fromLocalFile (not Path.as_uri())"
+  }
+}

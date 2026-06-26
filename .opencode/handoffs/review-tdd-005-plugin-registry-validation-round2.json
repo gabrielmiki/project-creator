@@ -1,0 +1,645 @@
+{
+  "review_metadata": {
+    "ticket": "T-005",
+    "title": "PluginRegistry + ValidationEngine",
+    "round": 2,
+    "date": "2026-06-16",
+    "prior_issues_round1": 9,
+    "prior_verdict": "NEEDS_REVISION"
+  },
+
+  "round1_issues_resolved": [
+    {
+      "issue": 1,
+      "description": "No validation rules defined — AC-6/AC-7 untestable without knowing what validate_spec() checks",
+      "resolved": true,
+      "evidence": "Ticket now has a 'Validation Rules' section (lines 52-72) with a table of 5 rules for validate_spec() (project_name non-empty, template valid, backend_id resolvable, frontend_id check, domains non-empty) and 5 rules for validate_plugin_config() (missing required key, INTEGER bounds, STRING pattern, CHOICE options, MULTI_SELECT options). AC-21 through AC-30 are now testable against these concrete rules.",
+      "notes": "Exception: Rule 3 (backend_id resolvable via PluginRegistry) requires the ValidationEngine to have access to a PluginRegistry, which the current API spec doesn't provide — see new issue 1 below."
+    },
+    {
+      "issue": 2,
+      "description": "33% method coverage — 6 of 9 API methods uncovered",
+      "resolved": true,
+      "evidence": "30 ACs now cover all 10 API methods (including constructor): __init__ (AC-1/2), discover (AC-3/4/5/6), resolve (AC-7/8), resolve_many (AC-9/10), get_available_backends (AC-11), get_available_frontends (AC-12), get_missing_dependencies (AC-13/14/15), topological_sort (AC-16/17/18/19/20), validate_spec (AC-21/22/23/24/25), validate_plugin_config (AC-26/27/28/29/30). 100% method coverage achieved.",
+      "notes": "✅ Fully resolved."
+    },
+    {
+      "issue": 3,
+      "description": "get_available_backends/frontends returned list[TemplateDefinition] (architectural mismatch — PluginRegistry doesn't know about templates)",
+      "resolved": true,
+      "evidence": "API spec now shows both methods returning list[PluginBase] (not list[TemplateDefinition]). AC-11 explicitly says 'a list of PluginBase instances is returned (may include all discovered plugins; backend/frontend differentiation will be added in a future ticket).' AC-12 follows the same pattern. The architectural issue is resolved by deferring the backend/frontend split.",
+      "notes": "✅ Fully resolved."
+    },
+    {
+      "issue": 4,
+      "description": "DiscoveryError and CycleDependencyError exception classes undefined",
+      "resolved": true,
+      "evidence": "Ticket lines 39-43 define both classes with docstrings: class DiscoveryError(Exception) raised on strict=True conflicts; class CycleDependencyError(Exception) raised on circular dependencies. Also listed in the Files section for __init__.py exports.",
+      "notes": "✅ Fully resolved. Both inheritance from Exception is clear. CycleDependencyError message spec (cycle path) is referenced in AC-17."
+    },
+    {
+      "issue": 5,
+      "description": "T-003 AC-8 cross-ticket test coupling — AST scanner will fail on new generation/ files without infrastructure imports",
+      "resolved": true,
+      "evidence": "Ticket lines 92-103 provide a dedicated 'Cross-ticket implementation notes' section with actionable instructions: 'Add from forge.infrastructure import GenerationTransaction as _  # noqa: F401 to each new file if no real infrastructure import is needed' and 'Ensure no forge.ui imports exist.' This is explicit and directly addresses the T-003 AC-8 test constraint.",
+      "notes": "✅ Fully resolved. The exact import statement that satisfies the AST scanner is provided."
+    },
+    {
+      "issue": 6,
+      "description": "generation/__init__.py listed as 'create' but already exists from T-003/T-004",
+      "resolved": true,
+      "evidence": "Ticket line 18: 'src/forge/generation/__init__.py — **update** (already exists from T-003/T-004; add PluginRegistry, ValidationEngine, ValidationError, DiscoveryError, CycleDependencyError to exports)'. Matches current file state (verified: 12 lines, exports ProgressReporter/StdoutProgressReporter/MockProgressReporter, imports GenerationTransaction as _).",
+      "notes": "✅ Fully resolved. Verified against actual filesystem."
+    },
+    {
+      "issue": 7,
+      "description": "AC-8 ambiguous: 'config value outside question bounds' — not specific about which question type or which bound",
+      "resolved": true,
+      "evidence": "AC-26 through AC-30 now provide concrete, specific scenarios: AC-26 (missing required key), AC-27 (INTEGER value 80 outside min=1024/max=65535), AC-28 (CHOICE value 'mysql' not in ['sqlite','postgres']), AC-29 (STRING 'INVALID' doesn't match r'^[a-z]+$'), AC-30 (empty questions list). Every AC has concrete values and expected field names.",
+      "notes": "✅ Fully resolved."
+    },
+    {
+      "issue": 8,
+      "description": "AC-4 ambiguous: 'Given requires=[\"a\"] and requires=[\"b\"]' — confusing dependency direction",
+      "resolved": true,
+      "evidence": "AC-16 now clearly states: 'Given plugin \"a\" declares requires=[\"b\"] (a needs b first) and plugin \"b\" declares no requires, when topological_sort([\"a\",\"b\"]) is called, then plugin \"b\" (dependency) appears before plugin \"a\" (dependent).' The parenthetical explanations make the dependency direction unambiguous.",
+      "notes": "✅ Fully resolved."
+    },
+    {
+      "issue": 9,
+      "description": "ValidationError @dataclass module location unspecified",
+      "resolved": true,
+      "evidence": "Ticket lines 120-123 provide a dedicated section: 'ValidationError lives in src/forge/generation/validation.py alongside ValidationEngine. It is not in domain/ because it is a validation result type specific to the generation layer's validation concern. Tests import it from forge.generation.' This is clear, architecturally consistent, and includes a rationale.",
+      "notes": "✅ Fully resolved."
+    }
+  ],
+
+  "ac_validation": [
+    {
+      "criterion": "AC-1",
+      "text": "Given no arguments, when PluginRegistry() is constructed, then the instance has strict=False and no error is raised.",
+      "testable": true,
+      "issues": [
+        "The API spec shows __init__(self, strict: bool = False) but does not document strict as a public attribute. The AC expects to verify 'instance has strict=False' — this requires either a public .strict attribute or a behavioral test (e.g., calling discover() with and without conflicts to verify non-strict mode). If strict is stored as _strict (private), the AC as written would require a public attribute that isn't documented."
+      ],
+      "suggested_fix": "Either document strict as a public read-only attribute in the API spec, or rephrase the AC to: 'Given no arguments, when PluginRegistry() is constructed, then no error is raised and the registry is in non-strict mode (conflicts produce warnings instead of errors during discover()).'"
+    },
+    {
+      "criterion": "AC-2",
+      "text": "Given strict=True, when PluginRegistry(strict=True) is constructed, then the instance has strict=True.",
+      "testable": true,
+      "issues": [
+        "Same attribute exposure concern as AC-1."
+      ],
+      "suggested_fix": "Same as AC-1."
+    },
+    {
+      "criterion": "AC-3",
+      "text": "Given an installed plugin with an entry point, when discover() is called, then the plugin is found in the returned dict and discovered[plugin_id] is a PluginBase instance.",
+      "testable": true,
+      "issues": [
+        "\"Installed plugin with an entry point\" requires mocking importlib.metadata.entry_points() — no plugin entry points exist in CI. This is testable with monkeypatch/mock, but no prior test in the project uses this pattern. A new mocking pattern must be established.",
+        "The AC references discovered[plugin_id] which assumes the dict key matches the entry point name. Should the assertion be on the dict key, or on plugin.name? Clarify that the returned dict keys are plugin IDs (entry point names), not arbitrary identifiers.",
+        "No prior test in this codebase mocks entry_points; test author will need to create this infrastructure from scratch."
+      ],
+      "suggested_fix": "Add a note that entry_points mocking requires: monkeypatch.setattr('importlib.metadata.entry_points', lambda group=None: ...) returning EntryPoint objects."
+    },
+    {
+      "criterion": "AC-4",
+      "text": "Given a conflict between entry_points and .plugins/ for the same ID, when discover() is called, then entry_points wins and a warning is logged at WARNING level containing the plugin ID and both source paths.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-5",
+      "text": "Given strict=True and a conflict, when discover() is called, then DiscoveryError is raised before any resolution occurs.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-6",
+      "text": "Given no entry points and no .plugins/ directory, when discover() is called, then an empty dict is returned.",
+      "testable": true,
+      "issues": [
+        "The test needs to ensure there are truly no entry points. Mocking importlib.metadata.entry_points() to return an empty list handles the entry_points side. For .plugins/, the test needs to ensure the directory doesn't exist or is empty — tmp_path can provide a clean workspace."
+      ],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-7",
+      "text": "Given a registry with discovered plugin \"myplugin\", when resolve(\"myplugin\") is called, then the returned PluginBase instance has name == \"myplugin\".",
+      "testable": true,
+      "issues": [
+        "Depends on discover() having been called first (or discover() being mocked). The phrase 'a registry with discovered plugin' implies the test must either call discover() with a mock, or directly inject a discovered plugin into the registry's internal dict via a test seam.",
+        "The assumption that resolve() returns a PluginBase instance with name matching the query ID is reasonable, but the AC doesn't specify what happens if the plugin is discovered but its name attribute differs from its discovery key (e.g., entry point name is 'myplugin' but plugin.name == 'MyPlugin'). Should resolve() match by entry point ID or by plugin.name?",
+        "No AC tests that resolve() fails if called before discover() — this is a minor state-management gap."
+      ],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-8",
+      "text": "Given a registry with no plugin named \"unknown\", when resolve(\"unknown\") is called, then KeyError is raised.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-9",
+      "text": "Given a registry with discovered plugins [\"a\", \"b\"], when resolve_many([\"a\", \"b\"]) is called, then a list of two PluginBase instances is returned in the same order.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-10",
+      "text": "Given a registry where plugin \"a\" is discovered but \"unknown\" is not, when resolve_many([\"a\", \"unknown\"]) is called, then KeyError is raised.",
+      "testable": true,
+      "issues": [
+        "Should the KeyError be raised at the first missing ID (short-circuit) or after checking all IDs? The AC specifies raising KeyError but not whether any successfully resolved IDs are returned. Implementation question: does resolve_many atomically resolve all, or fail-fast on first missing?"
+      ],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-11",
+      "text": "Given discovered plugins, when get_available_backends() is called, then a list of PluginBase instances is returned (may include all discovered plugins; backend/frontend differentiation will be added in a future ticket).",
+      "testable": true,
+      "issues": [
+        "The parenthetical '(may include all discovered plugins)' makes the AC somewhat loose — what exactly is the assertion? The only firm assertion is 'a list of PluginBase instances is returned.' The test can assert isinstance on each element, but the specific membership is unspecified.",
+        "If get_available_backends() currently returns all discovered plugins, and backend differentiation is deferred, the test can only assert the return is a list of PluginBase. This is sufficient for Phase 1 but the AC should be tightened when backend/frontend split is added."
+      ],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-12",
+      "text": "Given discovered plugins, when get_available_frontends() is called, then a list of PluginBase instances is returned (may be empty in Phase 1).",
+      "testable": true,
+      "issues": [
+        "Same looseness as AC-11. In Phase 1, this may return an empty list. The test can only assert the return is list[PluginBase]. If frontend plugins exist in discovered plugins, the behavior is unspecified — should they appear, or should an empty list always be returned until the split is implemented?",
+        "The ticket should specify: returns discovery results filtered by an (as-yet-nonexistent) capability check, or returns an empty list until the split is designed. Currently ambiguous."
+      ],
+      "suggested_fix": "Clarify: 'Given discovered plugins, when get_available_frontends() is called, then an empty list is returned (frontend differentiation deferred to a future ticket).' This gives a concrete expected value for Phase 1."
+    },
+    {
+      "criterion": "AC-13",
+      "text": "Given a plugin \"a\" whose requires are all resolved (present in discovered plugins), when get_missing_dependencies(\"a\") is called, then an empty list is returned.",
+      "testable": true,
+      "issues": [
+        "Requires the test to create plugin instances with specific requires values. The conftest.py plugins (FileOnlyPlugin, etc.) do NOT set requires or run_after — they inherit PluginBase's __init__ which copies class-level defaults (empty lists). Tests will need inline plugin definitions with requires=[...]."
+      ],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-14",
+      "text": "Given a plugin \"a\" with requires=[\"b\"] where \"b\" is NOT in discovered plugins, when get_missing_dependencies(\"a\") is called, then the returned list contains \"b\".",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-15",
+      "text": "Given a plugin ID \"unknown\" that is not in discovered plugins, when get_missing_dependencies(\"unknown\") is called, then KeyError is raised.",
+      "testable": true,
+      "issues": [
+        "Consistent behavior with resolve() AC-8. Good — the plugin ID must exist in discovered plugins to query its dependencies."
+      ],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-16",
+      "text": "Given plugin \"a\" declares requires=[\"b\"] (a needs b first) and plugin \"b\" declares no requires, when topological_sort([\"a\",\"b\"]) is called, then plugin \"b\" (dependency) appears before plugin \"a\" (dependent) in the returned list.",
+      "testable": true,
+      "issues": [
+        "The topological_sort method accepts list[str] (plugin IDs), but needs to look up plugin instances to read their requires/run_after attributes. This implies it either: (1) calls resolve() internally, or (2) uses the internal _discovered dict. The AC assumes the discovery state is available — tests must ensure discover() is called before topological_sort().",
+        "The ticket does not specify whether topological_sort() calls resolve() or uses internal state. This is an implementation detail, but tests must understand the dependency."
+      ],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-17",
+      "text": "Given a circular dependency (A requires B, B requires A), when topological_sort([\"A\",\"B\"]) is called, then CycleDependencyError is raised with a message containing the cycle path (e.g., \"A → B → A\").",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-18",
+      "text": "Given a single plugin with no requires, when topological_sort([\"only\"]) is called, then a list with that single plugin is returned unchanged.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-19",
+      "text": "Given an empty list, when topological_sort([]) is called, then an empty list is returned.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-20",
+      "text": "Given a plugin list where no plugins declare requires or run_after, when topological_sort([\"b\",\"a\"]) is called, then the returned list preserves input order (stable sort).",
+      "testable": true,
+      "issues": [
+        "This AC asserts stable sort behavior (not just 'no reordering'). The test must verify result == ['b', 'a'] (same order as input). This is a stronger contract than arbitrary sort — the implementation must maintain insertion order for plugins without dependencies.",
+        "Note: run_after is only mentioned as 'no plugins declare run_after'. There is no AC testing that run_after actually affects topological sorting behavior. If run_after is a 'soft ordering hint,' what does that mean? Does it create an edge? A suggestion? The behavior of run_after is architecturally defined but not tested."
+      ],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-21",
+      "text": "Given a valid ProjectSpec (non-empty project_name, valid template with resolvable backend_id, at least one Domain), when validate_spec() is called, then an empty list is returned.",
+      "testable": true,
+      "issues": [
+        "BLOCKING: validate_spec(spec: ProjectSpec) does not have access to PluginRegistry, but 'resolvable backend_id' requires checking whether backend_id exists in discovered plugins. The API spec shows no constructor parameter or method parameter for a registry. See new blocking issue 1.",
+        "The validation rules table says 'Must be resolvable via the PluginRegistry' but the API spec doesn't specify how ValidationEngine gets registry access.",
+        "Without this fix, the test cannot construct a 'valid' ProjectSpec that will pass the backend_id check, nor an invalid one that will fail it (AC-24)."
+      ],
+      "suggested_fix": "Add __init__ to ValidationEngine API spec: def __init__(self, registry: PluginRegistry) -> None. Or add registry parameter to validate_spec: def validate_spec(self, spec: ProjectSpec, registry: PluginRegistry) -> list[ValidationError]."
+    },
+    {
+      "criterion": "AC-22",
+      "text": "Given a ProjectSpec with project_name=\"\", when validate_spec() is called, then the returned list contains a ValidationError where error.field == \"project_name\".",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-23",
+      "text": "Given a ProjectSpec with an empty domains list, when validate_spec() is called, then the returned list contains a ValidationError where error.field == \"domains\".",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-24",
+      "text": "Given a ProjectSpec with template.backend_id that does not resolve to any discovered plugin, when validate_spec() is called, then the returned list contains a ValidationError where error.field == \"template.backend_id\".",
+      "testable": true,
+      "issues": [
+        "BLOCKING: Requires ValidationEngine to have access to PluginRegistry — same issue as AC-21. Without registry access, backend_id resolution cannot be checked.",
+        "The AC field name 'template.backend_id' uses dot notation to indicate nested field paths. The implementer must produce a ValidationError with field='template.backend_id', which is a path traversal convention. This should be documented in the ValidationError spec."
+      ],
+      "suggested_fix": "Resolve the PluginRegistry access question first (see AC-21 suggested fix)."
+    },
+    {
+      "criterion": "AC-25",
+      "text": "Given a ProjectSpec with both project_name=\"\" and empty domains, when validate_spec() is called, then the returned list contains multiple ValidationError entries covering all violations.",
+      "testable": true,
+      "issues": [
+        "'multiple ValidationError entries covering all violations' is slightly vague — does it mean 'at least 2' entries, or 'exactly 2'? In the described scenario only 2 violations exist (empty project_name + empty domains), but if backend_id also fails to resolve (no registry access), there could be 3. The AC should clarify the expected count or specify 'at least one per violation.'",
+        "Also depends on the registry access fix — if backend_id is not resolvable, it compounds the count ambiguity."
+      ],
+      "suggested_fix": "Specify: '...then the returned list contains at least two ValidationError entries, one with field=\"project_name\" and one with field=\"domains\".'"
+    },
+    {
+      "criterion": "AC-26",
+      "text": "Given a required Question with key=\"host\" and no default, when validate_plugin_config(\"myplugin\", {}, [question]) is called, then the returned list contains a ValidationError where error.field == \"host\".",
+      "testable": true,
+      "issues": [
+        "What about required=True with a default value? Should the key be optional if a default is provided? The validation rule says 'Required question (required=True) with key missing from config' but doesn't mention default value behavior. If the question has required=True and a default, is the key still required? AC-26 explicitly says 'no default' which sidesteps the ambiguity, but the validation rule table could be misinterpreted."
+      ],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-27",
+      "text": "Given a Question with key=\"port\", question_type=QuestionType.INTEGER, and validation=ValidationRule(min=1024, max=65535), when validate_plugin_config(\"myplugin\", {\"port\": 80}, [question]) is called, then the returned list contains a ValidationError where error.field == \"port\" and error.severity == \"error\".",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-28",
+      "text": "Given a Question with key=\"db\", question_type=QuestionType.CHOICE, and options=[\"sqlite\",\"postgres\"], when validate_plugin_config(\"myplugin\", {\"db\": \"mysql\"}, [question]) is called, then the returned list contains a ValidationError where error.field == \"db\".",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-29",
+      "text": "Given a Question with key=\"name\", question_type=QuestionType.STRING, and validation=ValidationRule(pattern=r\"^[a-z]+$\"), when validate_plugin_config(\"myplugin\", {\"name\": \"INVALID\"}, [question]) is called, then the returned list contains a ValidationError where error.field == \"name\".",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-30",
+      "text": "Given an empty questions list, when validate_plugin_config(\"myplugin\", {\"key\": \"val\"}, []) is called, then an empty list is returned (no validation applies).",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    }
+  ],
+
+  "new_issues_found": [
+    {
+      "id": "NEW-1",
+      "severity": "blocking",
+      "title": "ValidationEngine has no access to PluginRegistry — AC-21/24/25 cannot be implemented",
+      "description": "Validation rules 3 and 4 require checking whether template.backend_id (and optionally frontend_id) are resolvable via PluginRegistry. AC-21 (valid spec) requires a 'resolvable backend_id' and AC-24 requires detecting an unresolvable one. However, the ValidationEngine API spec shows no __init__ and the only method signatures are validate_spec(self, spec: ProjectSpec) and validate_plugin_config(...). Neither has a PluginRegistry parameter, nor is there a constructor shown. Without knowing how the engine accesses the registry, AC-21, AC-24, and AC-25 (which may compound multiple violations including backend_id) cannot be implemented.",
+      "location": "API spec lines 35-37 vs Validation Rules table lines 60-61",
+      "suggested_fix": "Add to the ValidationEngine API spec: `def __init__(self, registry: PluginRegistry) -> None: ...`. This is the most natural design — the orchestrator (T-007) creates both PluginRegistry and ValidationEngine, passing the registry to the engine at construction time. Update the API spec to show: class ValidationEngine: def __init__(self, registry: PluginRegistry) -> None: ... def validate_spec(self, spec: ProjectSpec) -> list[ValidationError]: ... def validate_plugin_config(...) -> ..."
+    },
+    {
+      "id": "NEW-2",
+      "severity": "medium",
+      "title": "MULTI_SELECT validation rule (Rule 5) defined but not tested in any AC",
+      "description": "Validation Rule 5 for validate_plugin_config() specifies: 'MULTI_SELECT: Value is not in options list'. However, no AC (26-30) tests this condition. The ACs cover: missing required key (AC-26), INTEGER bounds (AC-27), CHOICE options (AC-28), STRING pattern (AC-29), and empty questions list (AC-30). MULTI_SELECT is entirely untested. BOOLEAN has no validation rule defined at all (implicitly no validation needed for booleans).",
+      "location": "Validation Rules table Rule 5 (line 72) — no corresponding AC",
+      "suggested_fix": "Add an AC-31: 'Given a Question with key=\"features\", question_type=QuestionType.MULTI_SELECT, and options=[\"auth\",\"admin\",\"api\"], when validate_plugin_config(\"myplugin\", {\"features\": [\"auth\",\"billing\"]}, [question]) is called, then the returned list contains a ValidationError where error.field == \"features\".'"
+    },
+    {
+      "id": "NEW-3",
+      "severity": "medium",
+      "title": "resolve_many([]) not tested — empty list edge case missing",
+      "description": "All methods related to list processing (topological_sort) have empty-list edge cases tested (AC-19). But resolve_many([]) has no AC. Should resolve_many([]) return an empty list, raise an error, or behave differently? The behavior is unspecified.",
+      "location": "No AC covers resolve_many([])",
+      "suggested_fix": "Add AC: 'Given an empty list, when resolve_many([]) is called, then an empty list is returned.' This is consistent with topological_sort(AC-19) and is the expected behavior."
+    },
+    {
+      "id": "NEW-4",
+      "severity": "medium",
+      "title": "run_after ordering semantics not tested",
+      "description": "AC-20 mentions run_after only as an absence (no plugins declare run_after). The spec defines both requires (hard dependency) and run_after (soft ordering hints) for topological_sort, but no AC tests that run_after actually influences sort order. If run_after is a 'soft hint,' what does that mean? Does it create an edge? A preference? The semantic of 'soft ordering hint' is architecturally defined in architecture.md but not tested.",
+      "location": "AC-20 only tests the 'no run_after' case",
+      "suggested_fix": "Add AC: 'Given plugin \"a\" declares run_after=[\"b\"] and plugin \"b\" declares nothing, when topological_sort([\"a\",\"b\"]) is called, then plugin \"b\" appears before plugin \"a\" in the returned list (run_after creates a soft ordering edge).'"
+    },
+    {
+      "id": "NEW-5",
+      "severity": "medium",
+      "title": "Constructor strict attribute exposure not documented",
+      "description": "AC-1/2 assert 'the instance has strict=False/True' but the API spec doesn't document strict as a public attribute. The constructor parameter strict: bool = False may be stored as _strict (private by convention). The ACs assume a public .strict attribute exists, which is not specified.",
+      "location": "API spec line 27 vs AC-1/2",
+      "suggested_fix": "Either (a) add strict as a documented public readonly attribute to the API spec, or (b) rephrase AC-1/2 to test behavior: 'when discover() is called with a conflict and strict=False, then no error is raised (warning only).' Option (b) is architecturally cleaner — test the behavioral contract, not the internal state."
+    },
+    {
+      "id": "NEW-6",
+      "severity": "low",
+      "title": "discover() with .plugins/ only (no entry points) not tested",
+      "description": "AC-3 tests entry points only. AC-4 tests conflict. AC-6 tests neither source. But there's no AC for .plugins/-only discovery (no entry points). This is a meaningful gap — .plugins/ may be the only source in some deployments.",
+      "location": "Discovery ACs (AC-3 through AC-6) — missing .plugins/-only scenario",
+      "suggested_fix": "Add AC: 'Given no entry points but a .plugins/ directory with a valid plugin file, when discover() is called, then the plugin is found in the returned dict with plugin ID matching the filename.'"
+    },
+    {
+      "id": "NEW-7",
+      "severity": "low",
+      "title": "PluginBase.name vs discovery key mismatch edge case",
+      "description": "AC-3 asserts discovered[plugin_id] is a PluginBase instance. AC-7 asserts resolve('myplugin') returns a PluginBase with name == 'myplugin'. Both assume the discovery key matches plugin.name. But what if the entry point name differs from the plugin class's name attribute? E.g., entry point ID is 'MyPlugin' but plugin.name = 'my-plugin'. The ACs don't specify whether the dict key or the plugin's name attribute is authoritative.",
+      "location": "AC-3 and AC-7",
+      "suggested_fix": "Clarify that the discovery dict key is the entry point name (not plugin.name), and resolve() matches against this key. The plugin.name is an independent attribute for display purposes. AC-7 should assert that the returned instance has the expected class/type, not that its name matches the key."
+    },
+    {
+      "id": "NEW-8",
+      "severity": "low",
+      "title": "validate_plugin_config with config value type mismatch not tested",
+      "description": "The validation rules don't specify type checking — e.g., passing a string value for an INTEGER question. Should this be a validation error? The ACs only test semantically wrong values (INTEGER out of bounds, CHOICE not in options). A string '' where an INTEGER is expected is a different class of error that isn't addressed.",
+      "location": "Validation Rules table — no type-checking rule",
+      "suggested_fix": "This is intentional — type validation may be added later. Acceptable as a known gap. No immediate action needed."
+    },
+    {
+      "id": "NEW-9",
+      "severity": "low",
+      "title": "Self-loop dependency (A requires A) not tested in topological_sort",
+      "description": "AC-17 tests a 2-element cycle (A→B→A). But a self-loop (A requires A) is a different edge case — it's a cycle of length 1. Should this raise CycleDependencyError? Or KeyError? Or is it silently ignored? The behavior is unspecified.",
+      "location": "AC-17 only tests 2-element cycles",
+      "suggested_fix": "Add AC: 'Given plugin \"a\" with requires=[\"a\"] (self-loop), when topological_sort([\"a\"]) is called, then CycleDependencyError is raised with a message containing the cycle path (e.g., \"a → a\").'"
+    }
+  ],
+
+  "method_coverage_table": [
+    {
+      "method": "PluginRegistry.__init__(self, strict: bool = False)",
+      "ac_coverage": "AC-1, AC-2",
+      "notes": "AC-1: default strict=False, no error. AC-2: strict=True. Both test construction behavior. Gap: strict attribute visibility not documented in API spec."
+    },
+    {
+      "method": "PluginRegistry.discover(self) -> dict[str, PluginBase]",
+      "ac_coverage": "AC-3, AC-4, AC-5, AC-6",
+      "notes": "AC-3: entry points success. AC-4: conflict logging. AC-5: strict mode error. AC-6: empty discovery. Gap: .plugins/-only scenario not tested (NEW-6)."
+    },
+    {
+      "method": "PluginRegistry.resolve(self, plugin_id: str) -> PluginBase",
+      "ac_coverage": "AC-7, AC-8",
+      "notes": "AC-7: existing plugin. AC-8: non-existent plugin (KeyError). Gap: calling resolve() before discover() not tested."
+    },
+    {
+      "method": "PluginRegistry.resolve_many(self, plugin_ids: list[str]) -> list[PluginBase]",
+      "ac_coverage": "AC-9, AC-10",
+      "notes": "AC-9: all-valid list. AC-10: partial failure (KeyError). Gap: empty list (resolve_many([])) not tested (NEW-3)."
+    },
+    {
+      "method": "PluginRegistry.get_available_backends(self) -> list[PluginBase]",
+      "ac_coverage": "AC-11",
+      "notes": "AC-11: returns list of PluginBase. Returns all discovered plugins in Phase 1. Loosely specified — test can only assert isinstance(element, PluginBase)."
+    },
+    {
+      "method": "PluginRegistry.get_available_frontends(self) -> list[PluginBase]",
+      "ac_coverage": "AC-12",
+      "notes": "AC-12: returns list of PluginBase (may be empty in Phase 1). Same looseness as AC-11. Should specify concrete return value (empty list) for Phase 1."
+    },
+    {
+      "method": "PluginRegistry.get_missing_dependencies(self, plugin_id: str) -> list[str]",
+      "ac_coverage": "AC-13, AC-14, AC-15",
+      "notes": "AC-13: all resolved. AC-14: one missing. AC-15: non-existent plugin ID (KeyError). Good coverage spectrum."
+    },
+    {
+      "method": "PluginRegistry.topological_sort(self, plugin_ids: list[str]) -> list[PluginBase]",
+      "ac_coverage": "AC-16, AC-17, AC-18, AC-19, AC-20",
+      "notes": "AC-16: basic ordering (requires). AC-17: cycle detection. AC-18: single element. AC-19: empty list. AC-20: stable sort. Gap: run_after not tested (NEW-4). Gap: self-loop cycle not tested (NEW-9)."
+    },
+    {
+      "method": "ValidationEngine.validate_spec(self, spec: ProjectSpec) -> list[ValidationError]",
+      "ac_coverage": "AC-21, AC-22, AC-23, AC-24, AC-25",
+      "notes": "AC-21: valid spec. AC-22: empty project_name. AC-23: empty domains. AC-24: unresolvable backend_id. AC-25: multiple violations. BLOCKING: all ACs that involve backend_id resolution (AC-21, AC-24, AC-25) need PluginRegistry access which the API spec does not provide (NEW-1)."
+    },
+    {
+      "method": "ValidationEngine.validate_plugin_config(self, plugin_id: str, config: dict, questions: list[Question]) -> list[ValidationError]",
+      "ac_coverage": "AC-26, AC-27, AC-28, AC-29, AC-30",
+      "notes": "AC-26: missing required key. AC-27: INTEGER out of bounds. AC-28: CHOICE not in options. AC-29: STRING pattern mismatch. AC-30: empty questions list. Gap: MULTI_SELECT not tested (NEW-2). Gap: type mismatch not tested (NEW-8)."
+    }
+  ],
+
+  "coverage_analysis": {
+    "happy_path": "COVERED",
+    "error_cases": "COVERED",
+    "edge_cases": "PARTIAL",
+    "method_coverage": "10/10 methods have AC coverage (100%)",
+    "plugin_isolation_tested": "YES (via cross-ticket T-003 AC-8 — no forge.ui imports, forge.infrastructure imports required)",
+    "notes": {
+      "happy_path": "AC-1/2 (constructor), AC-3 (discovery), AC-7/9 (resolution), AC-11/12 (available plugins), AC-13 (missing deps resolved), AC-16/18/20 (topological sort), AC-21 (valid spec), AC-30 (empty questions). All happy paths covered.",
+      "error_cases": "AC-5 (DiscoveryError), AC-8/10/15 (KeyError), AC-17 (CycleDependencyError), AC-22/23/24 (ValidationError for invalid fields), AC-26/27/28/29 (ValidationError for invalid config). 12 error-case ACs.",
+      "edge_cases": "AC-4 (conflict logging), AC-6 (empty discovery), AC-14 (missing dependency), AC-18 (single element), AC-19 (empty list), AC-20 (stable sort), AC-25 (multiple violations), AC-30 (empty questions). 8 edge-case ACs. Gaps: resolve_many([]), .plugins/-only discovery, run_after ordering, self-loop cycle.",
+      "spec_gaps": "NEW-1 (ValidationEngine registry access — blocking), NEW-5 (constructor strict attribute — medium), NEW-7 (name vs key mismatch — low)"
+    }
+  },
+
+  "infrastructure_readiness": [
+    {
+      "requirement": "conftest.py with mock plugin fixtures (incl. requires/run_after attributes)",
+      "status": "EXISTS (with gaps)",
+      "location": "tests/unit/conftest.py",
+      "notes": "EXISTS with 5 mock plugin classes. However, none set requires or run_after attributes (they inherit PluginBase.__init__ which creates per-instance copies of class-level defaults = []). For topological_sort ACs (AC-13/14/16/17/20), tests will need plugins with explicit requires=['...'] values. These can be defined inline in test files or added to conftest. Per T-002 post-mortem, PluginBase.__init__() creates per-instance copies of requires/run_after (verified in src/forge/plugins/base.py lines 21-23)."
+    },
+    {
+      "requirement": "Mock for importlib.metadata.entry_points()",
+      "status": "MISSING (needs to be created in test file)",
+      "location": "No existing test uses this pattern",
+      "notes": "AC-3/4/5/6 need to mock entry_points(). The pattern would be: monkeypatch.setattr('importlib.metadata.entry_points', lambda group=None: ...). No prior test in this project uses this pattern — test author must create new infrastructure."
+    },
+    {
+      "requirement": "Mock for .plugins/ filesystem scanning",
+      "status": "MISSING (needs to be created in test file)",
+      "location": "No existing test uses this pattern",
+      "notes": "AC-4/6 need to simulate .plugins/ directory with plugin files. Pattern: tmp_path / '.plugins' / 'myplugin.py' with minimal plugin content. Dynamic module loading may be needed. Similar to tmp_path pattern in test_transaction.py but with .py file creation."
+    },
+    {
+      "requirement": "pytest caplog fixture for warning assertions",
+      "status": "EXISTS",
+      "location": "Built into pytest",
+      "notes": "AC-4 requires 'a warning is logged at WARNING level' — caplog is the standard fixture for this. No additional setup needed."
+    },
+    {
+      "requirement": "T-003 AC-8 AST scanner compatibility for new files",
+      "status": "EXISTS (with cross-ticket constraint)",
+      "location": "tests/unit/test_progress.py (TestAC8_NoCrossLayerImports)",
+      "notes": "EXISTS and imposes a binding constraint on T-005: every new .py file in generation/ must (a) NOT import from forge.ui, and (b) MUST import from forge.infrastructure. The ticket provides explicit workaround: add 'from forge.infrastructure import GenerationTransaction as _  # noqa: F401' to each new file. Verified that the current __init__.py and progress.py both follow this pattern (have GenerationTransaction as _ imports)."
+    },
+    {
+      "requirement": "Domain models needed by tests (ProjectSpec, TemplateDefinition, Question, QuestionType, ValidationRule, ValidationError)",
+      "status": "EXISTS",
+      "location": "src/forge/domain/",
+      "notes": "All domain models needed by T-005 ACs exist and are importable. ProjectSpec requires TemplateDefinition, Domain, and config dict. Question supports all types (INTEGER, STRING, CHOICE, MULTI_SELECT). ValidationRule supports min/max/pattern. Verified importable: from forge.domain import ProjectSpec, TemplateDefinition, Question, QuestionType, ValidationRule, Domain, GeneratedFile."
+    },
+    {
+      "requirement": "Test file location for PluginRegistry tests",
+      "status": "MISSING (to be created)",
+      "location": "tests/unit/test_registry.py (recommended) or tests/unit/test_plugin_registry.py",
+      "notes": "Expected by test-first gate. Should follow class-per-AC pattern from test_progress.py and test_transaction.py. Initial collection will fail with ModuleNotFoundError (expected, since forge.generation.registry doesn't exist yet)."
+    },
+    {
+      "requirement": "Test file location for ValidationEngine tests",
+      "status": "MISSING (to be created)",
+      "location": "tests/unit/test_validation.py (recommended)",
+      "notes": "Same pattern — class-per-AC, module-not-found at collection. May share conftest plugin fixtures or create inline."
+    }
+  ],
+
+  "spec_consistency": {
+    "findings": [
+      {
+        "aspect": "PluginRegistry API spec vs Architecture.md",
+        "status": "CONSISTENT",
+        "detail": "Architecture.md does not specify PluginRegistry methods (only mentions it by name in layer diagram). Ticket is the sole authority. No contradiction."
+      },
+      {
+        "aspect": "ValidationEngine API spec vs Architecture.md",
+        "status": "CONSISTENT (both have same gap)",
+        "detail": "Both documents show identical signatures: validate_spec(spec: ProjectSpec) -> list[ValidationError] and validate_plugin_config(plugin_id: str, config: dict, questions: list[Question]) -> list[ValidationError]. Both documents omit the PluginRegistry dependency needed for backend_id resolution (NEW-1). Both documents omit the constructor. This gap exists in both the ticket and architecture.md."
+      },
+      {
+        "aspect": "Exception definitions vs Architecture.md",
+        "status": "CONSISTENT",
+        "detail": "Architecture.md does not define DiscoveryError or CycleDependencyError — only mentions discovery conflict behavior ('log warning' and 'error on strict'). Ticket defines both exception classes. No contradiction — ticket adds detail beyond architecture.md."
+      },
+      {
+        "aspect": "Discovery priority vs Architecture.md",
+        "status": "CONSISTENT",
+        "detail": "Both documents: entry_points (priority 10) wins over .plugins/ (priority 5). Strict mode errors on conflict. Deterministic sorted iteration. Identical tables."
+      },
+      {
+        "aspect": "Dependency ordering vs Architecture.md",
+        "status": "CONSISTENT",
+        "detail": "Both documents: topological sort resolves requires/run_after, detects cycles, guarantees dependencies run first. CycleDependencyError with cycle path."
+      },
+      {
+        "aspect": "get_available_backends/frontends return type (Round 1 fix)",
+        "status": "CONSISTENT",
+        "detail": "Both now return list[PluginBase] (not list[TemplateDefinition] which was the Round 1 architectural mismatch). Ticket and architecture.md are in agreement."
+      },
+      {
+        "aspect": "ValidationError module location",
+        "status": "CONSISTENT",
+        "detail": "Ticket line 120-123 explicitly says 'ValidationError lives in src/forge/generation/validation.py alongside ValidationEngine.' Not in domain/. Architecture.md's domain layer mentions 'ValidatedConfig (deferred to T-005)' which is a different type (the validated result, not the error type). No contradiction."
+      }
+    ]
+  },
+
+  "verdict": "NEEDS_REVISION",
+
+  "blocking_issues": [
+    "NEW-1: ValidationEngine API spec does not include PluginRegistry access. AC-21 (valid spec requires resolvable backend_id), AC-24 (unresolvable backend_id), and AC-25 (multiple violations) all require checking backend_id against discovered plugins. The ValidationEngine has no constructor and no method parameter for a PluginRegistry. Fix: add __init__(self, registry: PluginRegistry) to ValidationEngine API spec, or add a registry parameter to validate_spec(). This decision must be documented before implementation."
+  ],
+
+  "non_blocking_gaps_addressed_in_round1": [
+    "✅ Issue 1 resolved: Validation rules table added with 5 rules for validate_spec() and 5 rules for validate_plugin_config()",
+    "✅ Issue 2 resolved: All 10 API methods now have AC coverage (up from 33% to 100%)",
+    "✅ Issue 3 resolved: get_available_backends/frontends return list[PluginBase] (architecturally correct)",
+    "✅ Issue 4 resolved: DiscoveryError and CycleDependencyError defined in API spec",
+    "✅ Issue 5 resolved: T-003 AC-8 cross-ticket coupling documented with actionable instructions",
+    "✅ Issue 6 resolved: __init__.py listed as 'update' (not 'create') with export instructions",
+    "✅ Issue 7 resolved: AC-26 through AC-30 use concrete values and specific question types",
+    "✅ Issue 8 resolved: AC-16 has clear dependency direction (b before a)",
+    "✅ Issue 9 resolved: ValidationError location specified (generation/validation.py)"
+  ],
+
+  "remaining_gaps": [
+    {
+      "id": "GAP-1",
+      "severity": "blocking",
+      "title": "ValidationEngine needs PluginRegistry access for backend_id resolution",
+      "description": "The ValidationEngine API spec must be updated to include a PluginRegistry dependency. Without this, AC-21/24/25 cannot be implemented. The most natural fix is adding __init__(self, registry: PluginRegistry) to the ValidationEngine class.",
+      "suggested_fix": "Add to API spec: class ValidationEngine: def __init__(self, registry: PluginRegistry) -> None: ..."
+    },
+    {
+      "id": "GAP-2",
+      "severity": "medium",
+      "title": "MULTI_SELECT validation rule not tested in any AC",
+      "description": "Validation Rule 5 (MULTI_SELECT value not in options) has no corresponding AC. Only CHOICE is tested (AC-28).",
+      "suggested_fix": "Add AC for MULTI_SELECT with a value not in options list."
+    },
+    {
+      "id": "GAP-3",
+      "severity": "medium",
+      "title": "resolve_many([]) edge case not tested",
+      "description": "resolve_many with empty input list is uncovered. Should return empty list?",
+      "suggested_fix": "Add AC: empty input → empty output."
+    },
+    {
+      "id": "GAP-4",
+      "severity": "medium",
+      "title": "run_after ordering semantics not tested",
+      "description": "run_after is only tested as absence (AC-20). No AC tests it as an active ordering signal.",
+      "suggested_fix": "Add AC testing that run_after creates a soft ordering edge."
+    },
+    {
+      "id": "GAP-5",
+      "severity": "medium",
+      "title": "Constructor strict attribute visibility not documented in API spec",
+      "description": "AC-1/2 assert on 'instance has strict=False/True' but the API spec doesn't document strict as a public attribute.",
+      "suggested_fix": "Either document .strict as a public attribute in the API spec, or rephrase AC-1/2 to test behavioral contract."
+    },
+    {
+      "id": "GAP-6",
+      "severity": "low",
+      "title": "discover() with .plugins/ only (no entry points) not tested",
+      "description": "No AC tests the case where .plugins/ is the sole discovery source.",
+      "suggested_fix": "Add AC for .plugins/-only discovery scenario."
+    },
+    {
+      "id": "GAP-7",
+      "severity": "low",
+      "title": "Self-loop cycle (A requires A) not tested",
+      "description": "AC-17 tests 2-element cycle only. Self-loop is distinct.",
+      "suggested_fix": "Add AC for self-loop detection."
+    },
+    {
+      "id": "GAP-8",
+      "severity": "low",
+      "title": "PluginBase.name vs discovery key mismatch edge case",
+      "description": "AC-3/7 assume the discovery dict key matches plugin.name. Behavior when they differ is unspecified.",
+      "suggested_fix": "Clarify that the dict key is the entry point name, not plugin.name."
+    }
+  ],
+
+  "summary": "T-005 has made significant progress since Round 1. All 9 blocking issues from Round 1 are confirmed resolved: validation rules are now specified, all 10 API methods have AC coverage (100%, up from 33%), the get_available_backends/frontends return type is architecturally correct (list[PluginBase]), both exception classes are defined, the T-003 cross-ticket coupling is documented with actionable instructions, __init__.py is listed as 'update' with export spec, AC-26/27/28/29/30 are concrete and specific, AC-16 has clear dependency direction, and ValidationError's location is specified. The 30 ACs are well-structured with Given/When/Then and cover happy paths, error cases, and edge cases. However, one NEW blocking issue was found: ValidationEngine has no way to access PluginRegistry for backend_id resolution, which is required by AC-21, AC-24, and AC-25. The fix is straightforward: add __init__(self, registry: PluginRegistry) to the ValidationEngine API spec. Additionally, 8 non-blocking gaps were identified (MULTI_SELECT not tested, resolve_many([]) not tested, run_after ordering not tested, strict attribute visibility, .plugins/-only discovery, self-loop cycle, name vs key mismatch). RECOMMENDATION: Fix the blocking issue (ValidationEngine constructor), address the medium-severity gaps (optional but recommended), then this ticket is ready for test-first implementation."
+}

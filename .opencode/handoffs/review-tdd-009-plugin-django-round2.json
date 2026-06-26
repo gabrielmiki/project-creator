@@ -1,0 +1,496 @@
+{
+  "meta": {
+    "ticket": "T-009 (Django Plugin)",
+    "review_round": 2,
+    "prior_verdict": "CHANGES REQUESTED",
+    "prior_blocking_issues": 2,
+    "prior_non_blocking_issues": 10,
+    "review_date": "2026-06-21"
+  },
+  "prior_issues_verification": [
+    {
+      "id": "BLOCKING-1",
+      "description": "AC-2 conflated generate() with files() — generate() returns None, cannot produce file output",
+      "status": "RESOLVED",
+      "evidence": "AC-2a now explicitly tests files() returning GeneratedFile entries for core paths. AC-2b tests PluginExecutionEngine staging behavior. generate() is handled separately by AC-13/AC-14. No conflation remains."
+    },
+    {
+      "id": "BLOCKING-2",
+      "description": "API Spec dependencies(self) signature wrong — actual interface is dependencies(self, spec: ProjectSpec) (changed during T-008)",
+      "status": "RESOLVED",
+      "evidence": "API spec line 46 shows `def dependencies(self, spec: ProjectSpec) -> list[str]:` — matches base.py:49-51 exactly. Callers in plugin_execution_engine.py:57 already pass `spec`. All mock fixtures updated during T-008."
+    },
+    {
+      "id": "NB-3",
+      "description": "API Spec generate() missing executor param",
+      "status": "RESOLVED",
+      "evidence": "API spec line 43 shows `def generate(self, spec, target_dir, executor) -> None:` — executor param present with untyped annotation (matching Design Note 7 AC-4 scanner compliance)."
+    },
+    {
+      "id": "NB-4",
+      "description": "AC-3 (original) ambiguous — psycopg2 in INSTALLED_APPS vs DATABASES vs requirements.txt",
+      "status": "RESOLVED",
+      "evidence": "AC-4/AC-5/AC-6 now clearly specify: (a) ENGINE value in DATABASES setting in settings.py, (b) whether the database package appears in requirements.txt. AC-4(b): 'requirements.txt includes psycopg2-binary'. AC-5(b): 'requirements.txt does NOT include any database-specific package'. No ambiguity."
+    },
+    {
+      "id": "NB-5",
+      "description": "AC-4 (original) missing negative test and cross-method consistency",
+      "status": "RESOLVED",
+      "evidence": "AC-5(b) includes negative assertion (no database package for SQLite). AC-15 explicitly tests cross-method consistency: files() AND dependencies() with empty config. AC-10/AC-11/AC-12 cover multiple dependency configurations."
+    },
+    {
+      "id": "NB-6",
+      "description": "No AC for questions() (keys, types, uniqueness)",
+      "status": "RESOLVED",
+      "evidence": "AC-3 covers all question aspects: key presence ('database', 'include_drf'), question types (CHOICE for database, BOOLEAN for include_drf), options for database question, and uniqueness across all keys."
+    },
+    {
+      "id": "NB-7",
+      "description": "No AC for dependencies() or directories()",
+      "status": "RESOLVED",
+      "evidence": "AC-9 covers directories() with 4 expected directories. AC-10/11/12 cover dependencies() for default, include_drf=True, and database=postgresql configurations."
+    },
+    {
+      "id": "NB-8",
+      "description": "No error-case ACs (empty/missing config, invalid database value)",
+      "status": "RESOLVED",
+      "evidence": "AC-15: empty config dict ({'django': {}}) — internal defaults, cross-method consistency. AC-16: no 'django' key in config — no exception + defaults. AC-17: invalid database value — ValidationEngine catches with severity='error'."
+    },
+    {
+      "id": "NB-9",
+      "description": "include_celery in API spec but zero AC coverage",
+      "status": "RESOLVED",
+      "evidence": "Design Note 10 explicitly removes include_celery from scope: 'Removed from API spec.' No mention of celery remains in API spec questions() or any AC."
+    },
+    {
+      "id": "NB-10",
+      "description": "No __init__.py AC-4 scanner compliance note",
+      "status": "RESOLVED",
+      "evidence": "Design Note 4: 'Every .py file under plugins/ must import from forge.domain (e.g., from forge.domain import ProjectSpec). django/__init__.py must include this import even if only re-exporting.' Follows established T-008 fastapi/__init__.py pattern."
+    },
+    {
+      "id": "NB-11",
+      "description": "No _config() helper pattern mention",
+      "status": "RESOLVED",
+      "evidence": "Design Note 1: 'Follow the _config(spec) helper pattern established in FastAPiPlugin (_config static method returning spec.config.get(\"django\", {})).' Explicitly references the T-008 established pattern."
+    },
+    {
+      "id": "NB-12",
+      "description": "Missing database=sqlite and database=mysql ACs",
+      "status": "RESOLVED",
+      "evidence": "AC-5 covers database=sqlite (sqlite3 ENGINE, no database package in requirements.txt). AC-6 covers database=mysql (mysql ENGINE, mysqlclient in requirements.txt). Both include settings.py content assertions."
+    }
+  ],
+  "ac_validation": [
+    {
+      "criterion": "AC-01",
+      "text": "[unit] Given the DjangoPlugin class, when instantiated, then plugin.name returns 'django'.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-02a",
+      "text": "(unit) Given a valid ProjectSpec with backend_id='django' and default config ({'django': {}}), when files() is called on the plugin, then the returned list contains GeneratedFile entries for manage.py, config/settings.py, config/urls.py, config/wsgi.py, and requirements.txt.",
+      "testable": true,
+      "issues": [
+        "'contains' is slightly loose — recommend asserting exact set membership for these 5 paths to prevent implementation from adding/omitting core files.",
+        "'default config' is explicitly defined as config={'django': {}}. Good — no ambiguity.",
+        "Test must construct ProjectSpec with config={'django': {}}."
+      ],
+      "suggested_fix": "Replace 'contains' with 'the returned list includes GeneratedFile entries whose .path values contain at minimum these 5 paths' — or simply tighten assertion to exact set match in the test."
+    },
+    {
+      "criterion": "AC-02b",
+      "text": "(unit via PluginExecutionEngine) Given a valid ProjectSpec with backend_id='django', when PluginExecutionEngine.run() is called with a MockTransaction, then files are staged via txn.stage_file() for the core files listed in AC-2a, and dependencies are appended to txn.requirements.",
+      "testable": true,
+      "issues": [
+        "Combines FileProvider AND DependencyProvider assertions in one AC — same pattern as T-008 AC-2b. Failure clarity would benefit from splitting.",
+        "PluginExecutionEngine cannot be imported in test file (cross-layer). Test must use local simulation pattern (like _MockTransaction in test_plugin_fastapi.py). The AC text describes system behavior, not test implementation — this is acceptable.",
+        "T-008 post-mortem (Lesson 6) confirms the local simulation pattern works and preserves layer isolation."
+      ],
+      "suggested_fix": "Consider splitting into 2b_i (stage_file assertions) and 2b_ii (requirements assertions) for failure isolation clarity."
+    },
+    {
+      "criterion": "AC-03",
+      "text": "Given the plugin's Configurable mixin, when questions() is called, then it returns Question objects whose .key attributes include 'database' and 'include_drf'. The database question must be QuestionType.CHOICE with options containing ['postgresql', 'sqlite', 'mysql']; include_drf must be QuestionType.BOOLEAN. All keys must be unique.",
+      "testable": true,
+      "issues": [
+        "'options containing' is loose — should be 'options exactly equal to' to prevent implementation from adding/removing valid database options.",
+        "Uniqueness assertion is well-specified ('All keys must be unique') — test should check len(keys) == len(set(keys)).",
+        "Question order is not specified. Test should use any()/next() pattern, not positional indexing (matching T-008 test pattern)."
+      ],
+      "suggested_fix": "Replace 'options containing' with 'options exactly equal to [\"postgresql\", \"sqlite\", \"mysql\"]' for precision."
+    },
+    {
+      "criterion": "AC-04",
+      "text": "Given database='postgresql' in config, when files() is called, then: (a) the generated config/settings.py contains \"ENGINE\": \"django.db.backends.postgresql\" in its DATABASES setting, and (b) requirements.txt includes psycopg2-binary.",
+      "testable": true,
+      "issues": [
+        "(b) says 'includes psycopg2-binary' — API spec dependencies() shows 'psycopg2-binary>=2.9'. The version constraint should be specified here for consistency, or the assertion should use substring match.",
+        "The DATABASES dict internal format is implementation-specific. Substring approach ('postgresql' in content) is safest.",
+        "Cross-reference: AC-12 (dependencies postgresql) uses exact version 'psycopg2-binary>=2.9'. AC-04(b) should match for cross-method consistency."
+      ],
+      "suggested_fix": "Clarify (b): 'requirements.txt includes psycopg2-binary>=2.9 (or a substring match thereof).'"
+    },
+    {
+      "criterion": "AC-05",
+      "text": "Given database='sqlite' in config, when files() is called, then: (a) the generated config/settings.py contains \"ENGINE\": \"django.db.backends.sqlite3\" in its DATABASES setting, and (b) requirements.txt does NOT include any database-specific package (SQLite is built into Python's stdlib).",
+      "testable": true,
+      "issues": [
+        "(b) 'any database-specific package' is ambiguous. Which packages? Should say explicitly: 'does NOT include psycopg2-binary or mysqlclient'.",
+        "Same substring concern on ENGINE value as AC-04."
+      ],
+      "suggested_fix": "Replace 'any database-specific package' with explicit: 'does NOT include \"psycopg2-binary\" or \"mysqlclient\".'"
+    },
+    {
+      "criterion": "AC-06",
+      "text": "Given database='mysql' in config, when files() is called, then: (a) the generated config/settings.py contains \"ENGINE\": \"django.db.backends.mysql\" in its DATABASES setting, and (b) requirements.txt includes mysqlclient.",
+      "testable": true,
+      "issues": [
+        "(b) 'includes mysqlclient' — API spec dependencies() shows 'mysqlclient>=2.2'. Version should be specified for consistency."
+      ],
+      "suggested_fix": "Clarify (b): 'requirements.txt includes mysqlclient>=2.2 (or a substring match thereof).'"
+    },
+    {
+      "criterion": "AC-07",
+      "text": "Given include_drf=True in config, when files() is called, then: (a) 'rest_framework' is present in INSTALLED_APPS in config/settings.py, and (b) requirements.txt includes djangorestframework.",
+      "testable": true,
+      "issues": [
+        "(b) 'includes djangorestframework' — API spec dependencies() shows 'djangorestframework>=3.15'. Version should match for cross-method consistency.",
+        "Cross-reference: AC-11 (dependencies with include_drf=True) asserts 'djangorestframework>=3.15'. files() assertion should use same version string."
+      ],
+      "suggested_fix": "Clarify (b): 'requirements.txt includes djangorestframework>=3.15 (or a substring match thereof).'"
+    },
+    {
+      "criterion": "AC-08",
+      "text": "Given include_drf=False (default) or include_drf absent from config, when files() is called, then 'rest_framework' is NOT present in INSTALLED_APPS in config/settings.py.",
+      "testable": true,
+      "issues": [
+        "Only checks settings.py. Does NOT check requirements.txt for absence of djangorestframework. For complete cross-method consistency, (b) should also assert no djangorestframework in requirements.txt.",
+        "AC-10 covers dependencies absence of djangorestframework for default config, but AC-08 only covers files(). If an implementation adds djangorestframework to requirements.txt but not INSTALLED_APPS, AC-08 would pass while AC-10 would fail — but only in the default config case, not the 'include_drf absent' variant."
+      ],
+      "suggested_fix": "Add clause (b): 'and requirements.txt does NOT include djangorestframework' for complete cross-method coverage."
+    },
+    {
+      "criterion": "AC-09",
+      "text": "Given the Django plugin, when directories() is called, then the returned list contains 'config/', 'apps/', 'static/', and 'templates/'.",
+      "testable": true,
+      "issues": [],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-10",
+      "text": "Given default config ({'django': {}}), when dependencies() is called, then the returned list contains 'django>=5.1' and does NOT contain 'djangorestframework>=3.15' or any database-specific package (SQLite default).",
+      "testable": true,
+      "issues": [
+        "'any database-specific package' is ambiguous. Should specify: 'does NOT contain \"psycopg2-binary>=2.9\" or \"mysqlclient>=2.2\".'",
+        "Good that it includes both positive AND negative assertions in one AC — requires specificity."
+      ],
+      "suggested_fix": "Replace 'any database-specific package' with explicit: 'does NOT contain \"psycopg2-binary>=2.9\" or \"mysqlclient>=2.2\".'"
+    },
+    {
+      "criterion": "AC-11",
+      "text": "Given include_drf=True in config, when dependencies() is called, then the returned list includes 'djangorestframework>=3.15'.",
+      "testable": true,
+      "issues": [
+        "Only checks that djangorestframework is PRESENT. Does not verify that base deps (django>=5.1) are still present. Test could pass even if the implementation accidentally drops base deps when DRF is enabled.",
+        "Recommend adding: 'and still includes \"django>=5.1\".'"
+      ],
+      "suggested_fix": "Add: 'and the returned list still includes \"django>=5.1\".'"
+    },
+    {
+      "criterion": "AC-12",
+      "text": "Given database='postgresql' in config, when dependencies() is called, then the returned list includes 'psycopg2-binary>=2.9'.",
+      "testable": true,
+      "issues": [
+        "Same concern as AC-11: only checks presence of psycopg2-binary, not preservation of base deps.",
+        "Recommend adding: 'and still includes \"django>=5.1\".'"
+      ],
+      "suggested_fix": "Add: 'and the returned list still includes \"django>=5.1\".'"
+    },
+    {
+      "criterion": "AC-13",
+      "text": "Given a valid ProjectSpec and target directory with default config, when generate() is called with a mock executor, then executor.run() is called with a command list containing ['uv', 'add', 'django>=5.1'].",
+      "testable": true,
+      "issues": [
+        "'containing' is ambiguous between subset and exact match. For default config, the command should be exactly these 3 elements (no database or DRF deps). Recommend 'exactly equal to' or use subsequence check.",
+        "Mock executor via MagicMock — well-established pattern from T-008 test_plugin_fastapi.py:257-269.",
+        "Must use untyped executor parameter to avoid AC-4 scanner — Design Note 7 documents this correctly.",
+        "No AC tests generate() with database=postgresql or database=mysql — this is the same class of issue as the T-008 code review critical finding where generate() only installed base deps, ignoring conditional database deps."
+      ],
+      "suggested_fix": "Clarify to: 'executor.run() was called with a command list exactly equal to [\"uv\", \"add\", \"django>=5.1\"] for default config.' And add AC-14b/AC-14c variants for generate() with database=postgresql and database=mysql (see coverage_analysis.gaps)."
+    },
+    {
+      "criterion": "AC-14",
+      "text": "Given include_drf=True in config, when generate() is called with a mock executor, then executor.run() is called with a command list that includes 'djangorestframework>=3.15'.",
+      "testable": true,
+      "issues": [
+        "'includes' is acceptable here since other deps (django>=5.1) should also be present.",
+        "Cross-method consistency verified: AC-11 (dependencies include_drf) → deps include djangorestframework, AC-07 (files include_drf) → settings.py has rest_framework + requirements.txt has djangorestframework, AC-14 (generate include_drf) → uv add includes djangorestframework. All three agree on include_drf conditional logic. Good.",
+        "No AC tests generate() with database=postgresql or database=mysql conditional packages. See AC-13 note above."
+      ],
+      "suggested_fix": "Same as AC-13: add generate() database-conditional ACs."
+    },
+    {
+      "criterion": "AC-15",
+      "text": "Given config={'django': {}} (empty config dict — plugin uses internal defaults), when files() and dependencies() are called, then: (a) requirements.txt does NOT include any database-specific package (SQLite default), (b) dependencies() returns only ['django>=5.1'], and (c) config/settings.py contains sqlite3 as the database engine.",
+      "testable": true,
+      "issues": [
+        "(a) 'any database-specific package' ambiguous — same as AC-05.",
+        "(b) 'returns only' is a strong assertion — exact equality. Good for cross-method consistency check.",
+        "(c) 'contains sqlite3' — should use the full ENGINE string for precision.",
+        "This AC effectively duplicates AC-05 + AC-10 for the empty dict case. The distinction from AC-16 (no 'django' key) is valid — AC-15 tests config key present but empty, AC-16 tests key absent."
+      ],
+      "suggested_fix": "Replace (a) 'any database-specific package' with explicit packages: 'does NOT include \"psycopg2-binary\" or \"mysqlclient\".'"
+    },
+    {
+      "criterion": "AC-16",
+      "text": "Given config={} (no 'django' key in ProjectSpec.config), when files(), directories(), or dependencies() is called, then no exception is raised and default values are used (the plugin accesses config via spec.config.get('django', {})).",
+      "testable": true,
+      "issues": [
+        "Tests 3 methods for absence of exception — strong error-case coverage.",
+        "The 'default values are used' clause is slightly underspecified (what are the defaults?) but the parenthetical about .get() clarifies the mechanism.",
+        "Design Note 1 specifies the config access pattern (spec.config.get('django', {})). Good."
+      ],
+      "suggested_fix": "Consider adding: 'default values are used (database defaults to sqlite, include_drf defaults to False)' to make defaults explicit."
+    },
+    {
+      "criterion": "AC-17",
+      "text": "Given an invalid database value (e.g., 'invalid') in plugin config, when ValidationEngine.validate_plugin_config() is called with the plugin's questions (constructed inline per Design Note 8), then a ValidationError with severity 'error' is returned (matching existing pattern at test_validation.py:test_choice_invalid_option).",
+      "testable": true,
+      "issues": [
+        "Uses inline Question construction (Design Note 8) — avoids needing plugin to exist at test time. Correct test-first design.",
+        "Matches existing test_validation.py:226-240 pattern for choice validation. Severity='error' is enforced by validation.py:148-157.",
+        "Design Note 2: ValidationEngine owns validation, plugin trusts validated input. Correct architecture alignment."
+      ],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-18",
+      "text": "[unit] Given the DjangoPlugin class, when instantiated, then display_name returns 'Django' and description returns a non-empty string.",
+      "testable": true,
+      "issues": [
+        "Should add non-empty-string assertion format: 'isinstance(plugin.description, str) and len(plugin.description) > 0' — matching T-008 AC-16 pattern."
+      ],
+      "suggested_fix": null
+    },
+    {
+      "criterion": "AC-19",
+      "text": "[unit] Given the forge.plugins.django package, when imported, then DjangoPlugin is importable from forge.plugins.django.",
+      "testable": true,
+      "issues": [
+        "Under test-first, this test will fail with ModuleNotFoundError — expected test-first gate behavior.",
+        "Design Note 4 requires django/__init__.py to import from forge.domain (e.g., 'from forge.domain import ProjectSpec as _  # noqa: F401') to satisfy AC-4 scanner. This AC does not explicitly reference the scanner requirement but Design Note covers it."
+      ],
+      "suggested_fix": null
+    }
+  ],
+  "infrastructure_readiness": [
+    {
+      "requirement": "DependencyProvider.dependencies(self, spec) signature",
+      "status": "EXISTS",
+      "location": "src/forge/plugins/base.py:49-51",
+      "notes": "Signature is `def dependencies(self, spec: ProjectSpec) -> list[str]:` — matches API spec line 46. PREVIOUSLY BLOCKING (Round 1), NOW VERIFIED FIXED."
+    },
+    {
+      "requirement": "PluginExecutionEngine passes spec to dependencies()",
+      "status": "EXISTS",
+      "location": "src/forge/generation/stages/plugin_execution_engine.py:57",
+      "notes": "Line 57: `txn.requirements.extend(plugin.dependencies(spec))` — spec correctly passed. PREVIOUSLY BLOCKING."
+    },
+    {
+      "requirement": "CommandRunner.generate() signature compatibility",
+      "status": "EXISTS",
+      "location": "src/forge/plugins/base.py:44-46",
+      "notes": "Signature: `def generate(self, spec: ProjectSpec, target_dir: Path, executor: ProcessExecutor) -> None`. AC-4 scanner requires plugin.py to use untyped `executor`. Design Note 7 correctly addresses this. Base class uses TYPE_CHECKING guard for ProcessExecutor import."
+    },
+    {
+      "requirement": "AC-4 scanner — forbidden imports check",
+      "status": "EXISTS",
+      "location": "tests/unit/test_plugin_base.py",
+      "notes": "Scanner uses rglob('*.py'). INFRA_EXEMPT_FILES = {'base.py'}. Every .py under plugins/ must import from forge.domain. Concrete plugins must NOT import from forge.infrastructure (Design Note 7). Fixes applied during T-008."
+    },
+    {
+      "requirement": "ValidationEngine.validate_plugin_config() CHOICE validation",
+      "status": "EXISTS",
+      "location": "src/forge/generation/validation.py:148-157",
+      "notes": "CHOICE type validation exists. Emits error severity for out-of-range options. AC-17 uses this exact code path. Existing test_validation.py:test_choice_invalid_option provides pattern reference."
+    },
+    {
+      "requirement": "app.py headless validation calls validate_plugin_config()",
+      "status": "EXISTS",
+      "location": "src/forge/app.py:77-87",
+      "notes": "Fixed during T-008. Iterates configured plugins and calls validate_plugin_config(). Uses spec.config.get() — consistent with DN1."
+    },
+    {
+      "requirement": "ProjectSpec.config dict access pattern",
+      "status": "EXISTS",
+      "location": "src/forge/domain/project_spec.py:32-37",
+      "notes": "config field is dict[str, dict[str, Any]]. plugin_config(key) raises KeyError for absent keys. DN1: use spec.config.get('django', {}) to avoid KeyError."
+    },
+    {
+      "requirement": "Entry point registration",
+      "status": "EXISTS",
+      "location": "pyproject.toml:16",
+      "notes": "Already registered as `django = 'forge.plugins.django:DjangoPlugin'`. AC-01 class attribute must match 'django'. Design Note 3 warns that `name` class attribute must match 'django' exactly."
+    },
+    {
+      "requirement": "Mock ProcessExecutor for generate() ACs",
+      "status": "EXISTS",
+      "location": "tests/unit/_shared.py / conftest.py",
+      "notes": "MagicMock serves as mock executor — well-established pattern from T-008. MockCommandPlugin.generate() already accepts executor parameter. Plugin test file will use inline import + MagicMock."
+    },
+    {
+      "requirement": "_MockTransaction pattern availability",
+      "status": "EXISTS",
+      "location": "tests/unit/test_plugin_fastapi.py:14-28",
+      "notes": "Local _MockTransaction pattern defined in test_plugin_fastapi.py. Django test file should define its own local copy (no cross-layer imports). Design pattern well-established."
+    },
+    {
+      "requirement": "Test `_make_spec()` helper pattern",
+      "status": "EXISTS",
+      "location": "tests/unit/test_plugin_fastapi.py:31-45",
+      "notes": "Local _make_fastapi_spec() helper constructs ProjectSpec from forge.domain only. Django test file should define _make_django_spec() following same pattern."
+    },
+    {
+      "requirement": "Question default values for Django config",
+      "status": "INCOMPLETE",
+      "location": "docs/context/tickets/009-plugin-django.md API spec questions()",
+      "notes": "AC-15 implies database defaults to 'sqlite' and include_drf defaults to False, but the API spec questions() does NOT specify Question.default values. The T-008 post-mortem (NB-4) noted this same issue. Defaults should be documented: database default='sqlite', include_drf default=False."
+    }
+  ],
+  "coverage_analysis": {
+    "happy_path": "COVERED",
+    "error_cases": "COVERED",
+    "edge_cases": "PARTIALLY COVERED",
+    "plugin_isolation_tested": "YES",
+    "details": {
+      "happy_path": [
+        "AC-01: plugin.name == 'django' — class attribute check",
+        "AC-02a: files() returns core file paths for manage.py, config/settings.py, config/urls.py, config/wsgi.py, requirements.txt",
+        "AC-02b: PluginExecutionEngine (simulated) stages files and appends deps",
+        "AC-03: questions() returns proper keys, types, options, uniqueness",
+        "AC-09: directories() returns config/, apps/, static/, templates/",
+        "AC-10: dependencies() returns base set ['django>=5.1'] with default config",
+        "AC-13: generate() calls executor.run() with uv add django>=5.1",
+        "AC-18: display_name='Django', description non-empty",
+        "AC-19: DjangoPlugin importable from forge.plugins.django"
+      ],
+      "error_cases": [
+        "AC-16: missing 'django' key → no exception, defaults used (covers files, directories, dependencies)",
+        "AC-17: invalid database value → ValidationEngine returns error severity"
+      ],
+      "edge_cases": [
+        "AC-04: database=postgresql → postgresql ENGINE + psycopg2-binary in requirements.txt",
+        "AC-05: database=sqlite → sqlite3 ENGINE + no database package in requirements.txt",
+        "AC-06: database=mysql → mysql ENGINE + mysqlclient in requirements.txt",
+        "AC-07: include_drf=True → rest_framework in INSTALLED_APPS + djangorestframework in requirements.txt",
+        "AC-08: include_drf=False/absent → no rest_framework in INSTALLED_APPS",
+        "AC-11: include_drf=True → dependencies includes djangorestframework>=3.15",
+        "AC-12: database=postgresql → dependencies includes psycopg2-binary>=2.9",
+        "AC-14: include_drf=True → generate() uv add includes djangorestframework>=3.15",
+        "AC-15: empty config dict → SQLite default, no extra deps (cross-method: files + dependencies)"
+      ],
+      "gaps": [
+        "MISSING: generate() with database=postgresql — no AC verifies that generate() installs psycopg2-binary. This is the SAME class of bug found in T-008 code review (critical: asyncpg driver mismatch + generate/deps inconsistency). If implementation's generate() only installs 'django>=5.1' without database driver, generated project crashes at manage.py run.",
+        "MISSING: generate() with database=mysql — same issue as postgresql above.",
+        "MISSING: generate() with include_drf=False variant — AC-14 covers include_drf=True but no AC tests the negative variant (generate without djangorestframework). AC-13 covers default config (which implies no DRF) but doesn't explicitly test include_drf=False.",
+        "MISSING: AC-08 (include_drf=False/absent) does not check requirements.txt for absence of djangorestframework — only checks settings.py.",
+        "MISSING: database='none' or similar invalid-but-not-rejected edge case not tested (ValidationEngine only rejects via AC-17 which uses explicit invalid value).",
+        "MISSING: include_celery was removed from scope (DN10) but if someone adds it back without updating ACs, there's no protection."
+      ]
+    }
+  },
+  "remaining_issues": [
+    {
+      "id": "MODERATE-1",
+      "severity": "MODERATE",
+      "area": "generate() database-conditional deps not tested",
+      "description": "No AC tests that generate() installs psycopg2-binary>=2.9 when database='postgresql', or mysqlclient>=2.2 when database='mysql'. This is EXACTLY the same class of bug that was found as a CRITICAL issue during T-008 code review (the generate() method only installed framework deps, ignoring conditional database/orm deps — causing generated projects to crash at runtime). Design Note 9 explicitly warns about cross-method consistency, but no AC enforces it for generate(). The API spec generate() pseudocode says '# pip install django djangorestframework (as configured)' — the '(as configured)' part implies conditional deps, but no AC verifies this.",
+      "recommended_fix": "Add two new ACs or extend AC-13/AC-14: (a) Given database='postgresql' in config, when generate() is called, then executor.run() includes 'psycopg2-binary>=2.9' in the command list. (b) Given database='mysql' in config, when generate() is called, then executor.run() includes 'mysqlclient>=2.2' in the command list. These mirror the pattern from T-008's TestAC7b_GenerateConditionalDeps for orm/auth deps.",
+      "can_block_implementation": false,
+      "rationale": "Design Note 9 explicitly states cross-method consistency requirement. The API spec generate() pseudocode shows conditional logic. An attentive implementer who reads Design Note 9 and the API spec will implement correctly. However, without an AC, the test-first gate won't catch a generate() that omits database deps. This should be fixed before test writing but does not block the ticket from being APPROVED for implementation."
+    },
+    {
+      "id": "LOW-1",
+      "severity": "LOW",
+      "area": "AC-04/AC-06/AC-07 version-string hardcoding",
+      "description": "AC-04(b) says 'includes psycopg2-binary', AC-06(b) says 'includes mysqlclient', AC-07(b) says 'includes djangorestframework' — none specify the version constraint shown in the API spec dependencies(). For cross-method consistency with AC-10/AC-11/AC-12 which use exact version strings (psycopg2-binary>=2.9, djangorestframework>=3.15, mysqlclient>=2.2), the files() ACs should reference the same version strings.",
+      "recommended_fix": "Add version strings to AC-04(b), AC-06(b), AC-07(b) matching the API spec dependencies() output."
+    },
+    {
+      "id": "LOW-2",
+      "severity": "LOW",
+      "area": "Ambiguous 'any database-specific package' in AC-05, AC-10, AC-15",
+      "description": "Three ACs use 'any database-specific package' without specifying which packages. This creates ambiguity in test implementation — the test must guess which packages to check for absence.",
+      "recommended_fix": "Replace with explicit package names: 'psycopg2-binary' and 'mysqlclient' (or versioned: 'psycopg2-binary>=2.9' and 'mysqlclient>=2.2')."
+    },
+    {
+      "id": "LOW-3",
+      "severity": "LOW",
+      "area": "AC-11/AC-12 don't verify base deps preserved",
+      "description": "AC-11 checks djangorestframework>=3.15 is present but doesn't assert django>=5.1 is still present. AC-12 checks psycopg2-binary>=2.9 is present but doesn't assert django>=5.1 is still present. Incomplete regression check.",
+      "recommended_fix": "Add 'and the returned list still includes \"django>=5.1\".' to both AC-11 and AC-12."
+    },
+    {
+      "id": "LOW-4",
+      "severity": "LOW",
+      "area": "AC-13 'containing' ambiguity",
+      "description": "'executor.run() is called with a command list containing [\"uv\", \"add\", \"django>=5.1\"]' — ambiguous between exact match and subsequence.",
+      "recommended_fix": "Clarify: 'exactly equal to [\"uv\", \"add\", \"django>=5.1\"]' for default config."
+    },
+    {
+      "id": "LOW-5",
+      "severity": "LOW",
+      "area": "AC-08 cross-method scope incomplete",
+      "description": "AC-08 tests DRF absence in settings.py only, not in requirements.txt. AC-10 tests DRF absence in dependencies (default config). But AC-08's 'include_drf absent' variant has no requirements.txt coverage.",
+      "recommended_fix": "Add clause (b) to AC-08: 'and requirements.txt does NOT include djangorestframework.'"
+    },
+    {
+      "id": "LOW-6",
+      "severity": "LOW",
+      "area": "Question defaults not documented in API spec",
+      "description": "AC-15/AC-16 imply database defaults to 'sqlite' and include_drf defaults to False, but the API spec questions() pseudocode doesn't show Question.default values. Same gap noted in T-008 post-mortem (NB-4).",
+      "recommended_fix": "Document defaults in API spec: questions() pseudocode should show default='sqlite' for database question and default=False for include_drf question."
+    },
+    {
+      "id": "LOW-7",
+      "severity": "LOW",
+      "area": "AC-01 not tagged [unit]",
+      "description": "AC-01 is not tagged [unit] while AC-18 and AC-19 are. Minor consistency issue."
+    },
+    {
+      "id": "LOW-8",
+      "severity": "INFO",
+      "area": "AC-06 MySQL note",
+      "description": "AC-06 tests database=mysql which requires mysqlclient. mysqlclient has C extensions and requires system dependencies (mysql-connector-c, etc.). The generate() AC for mysql would attempt `uv add mysqlclient>=2.2` which might fail if the system doesn't have build dependencies. This is an infrastructure concern, not a test issue — the test uses a mock executor so no actual pip install happens. Worth noting for integration testing.",
+      "recommended_fix": "None needed for unit tests. Note for integration testing."
+    }
+  ],
+  "verdict": "APPROVED",
+  "verdict_rationale": "All 12 prior issues (2 blocking + 10 non-blocking) are VERIFIED RESOLVED. The ticket now thoroughly covers all 4 capability mixins (Configurable, FileProvider, CommandRunner, DependencyProvider), includes error cases (empty config, missing key, invalid value), and incorporates all critical lessons from T-008 (AC-4 scanner compliance, _config helper, cross-method consistency, ValidationEngine ownership, test-first construction). One moderate issue remains (missing generate() ACs for database=postgresql/mysql — same class as T-008 critical code review finding) but Design Note 9 explicitly warns about cross-method consistency and the API spec generates() pseudocode shows conditional logic, so an attentive implementer will handle it correctly. The gap should be addressed before test writing but does not block implementation approval. All 19 ACs are individually testable as unit tests with existing test infrastructure.",
+  "blocking_issues": [],
+  "implementation_status": {
+    "status": "COMPLETE",
+    "files_created": [
+      "src/forge/plugins/django/__init__.py",
+      "src/forge/plugins/django/plugin.py"
+    ],
+    "verification": {
+      "ruff_lint": "PASS",
+      "ruff_format": "PASS",
+      "mypy": "PASS",
+      "django_plugin_tests": "37/37 PASS",
+      "ac4_scanner": "PASS",
+      "ac19_validation": "2/2 PASS",
+      "full_suite": "239/239 PASS"
+    },
+    "code_review": {
+      "framework": "C.L.E.A.R.",
+      "issues_found": 0,
+      "verdict": "APPROVE"
+    },
+    "post_mortem": "docs/context/post-mortem/tdd-plugin-django.md"
+  }
+}
