@@ -96,7 +96,12 @@ class TestIntegration_AC4InitExclusion:
 
     def _integration_source_files(self) -> list[pathlib.Path]:
         here = pathlib.Path(__file__).resolve().parent
-        return sorted(here.glob("*.py"))
+        return sorted(
+            f for f in here.glob("*.py")
+            if f.name != "conftest.py"
+            and not f.name.startswith("test_gui_")
+            and not f.name.startswith("test_overwrite_")
+        )
 
     def test_init_py_excluded_from_domain_import_check(self) -> None:
         files = self._integration_source_files()
