@@ -158,7 +158,7 @@ class TestAC6_GenerationRequestedSignal:
         from pathlib import Path
 
         monkeypatch.setattr(Path, "cwd", lambda: Path("/tmp/test"))
-        monkeypatch.setattr(Path, "exists", lambda _: False)
+        monkeypatch.setattr(Path, "exists", lambda self: self == Path("/tmp"))
         monkeypatch.setattr("PySide6.QtCore.QThread.start", lambda self: None)
 
         main_window.navigate_to(3)

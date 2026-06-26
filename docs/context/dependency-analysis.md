@@ -63,13 +63,19 @@ Legend: ──► direct dependency     ~ ~ ~ ► transitive dependency
             │               ├─► [ui] T-013 GenerationWorker
             │               ├─► [ui] T-014 Wizard Screens 1-3
             │               │     (uses: ProjectSpec, TemplateDefinition, Question)
-              │               └─► [ui] T-015 Wizard Screens 4-5
-              │                     (uses: ProjectSpec, DurationEstimate, Orchestrator,
-              │                      GenerationWorker, GenerationTransaction, WizardScreen)
-              │                     (main_window.py: next_screen, navigate_to,
-              │                      _update_navigation_buttons, +9 change sites)
+              │               ├─► [ui] T-015 Wizard Screens 4-5
+              │               │     (uses: ProjectSpec, DurationEstimate, Orchestrator,
+              │               │      GenerationWorker, GenerationTransaction, WizardScreen)
+              │               │     (main_window.py: next_screen, navigate_to,
+              │               │      _update_navigation_buttons, +9 change sites)
+              │               │
+              │               └─► [ui] T-019 Output Directory Picker
+              │                     (modifies: welcome_screen.py, main_window.py,
+              │                      review_screen.py)
+              │                     (creates: test_output_directory_picker.py)
+              │                     (layer: ui/ — pure UI, no infra/gen/domain changes)
               │
-             ├─► [generation] T-006 Generation Stages (all 6)
+              ├─► [generation] T-006 Generation Stages (all 6)
              │     (imports: ProjectSpec, GeneratedFile, DurationEstimate,
              │      ProgressReporter, GenerationTransaction,
              │      PluginBase, FileProvider, CommandRunner, DependencyProvider,
@@ -592,26 +598,27 @@ T08.1 (infrastructure/process_executor.py) ────────────�
 | `src/forge/app.py` | **CREATE (T-007)** | Bootstrap: `main(args)` dispatch function; constructs PluginRegistry + ValidationEngine + Orchestrator; `detect_display()` extracted as standalone function for mockability; dispatches to headless CLI or GUI | `PluginRegistry`, `ValidationEngine`, `Orchestrator`, `GenerationTransaction`, `StdoutProgressReporter` |
 | `src/forge/__main__.py` | **CREATE (T-007)** | Entry point called via `python -m forge`; parses `--headless`, `spec.json`, `output_dir`; delegates to `app.main()`; does not construct core objects directly | `forge.app.main()` |
 
-### UI Layer (T-012–T-015)
+### UI Layer (T-012–T-015, T-019)
 | File | Action | Depends on | Created by |
 |---|---|---|---|
-| `src/forge/ui/__init__.py` | **CREATE** | Package init (currently missing, must exist for `forge.ui.app` imports) | T-012 |
-| `src/forge/ui/app.py` | **CREATE** | `create_application()` — QApplication bootstrap, style/icon, instantiates MainWindow, starts event loop; must `qRegisterMetaType("GenerationResult")` for T-013 cross-thread signals | T-012 |
-| `src/forge/ui/main_window.py` | **CREATE** | `MainWindow(QMainWindow)` with `QStackedWidget` + 5 placeholder screens + navigation footer; 233-line test-first contract (12 ACs) locked | T-012 |
+| `src/forge/ui/__init__.py` | ✅ **Created** | Package init | T-012 |
+| `src/forge/ui/app.py` | ✅ **Created** | `create_application()` — QApplication bootstrap, style/icon, instantiates MainWindow, starts event loop; must `qRegisterMetaType("GenerationResult")` for T-013 cross-thread signals | T-012 |
+| `src/forge/ui/main_window.py` | ✅ **Created** | `MainWindow(QMainWindow)` with `QStackedWidget` + 5 placeholder screens + navigation footer; 233-line test-first contract (12 ACs) locked | T-012 |
 | `src/forge/ui/screens/__init__.py` | ✅ **Already exists** | Package init for screens subpackage (empty) | T-012 |
-| `tests/unit/test_main_window.py` | ✅ **Already exists (test-first)** → **MODIFY (T-014)** | 233 lines, 12 ACs — `main_window` fixture updated to inject screens with `can_proceed=True` for AC-2 | T-016 (test-first) |
-| `src/forge/app.py` (_launch_gui) | **MODIFY** | Replace `_launch_gui()` stub with real bootstrap: construct `PluginRegistry` → `ValidationEngine` → `Orchestrator` → call `forge.ui.app.create_application(orch)` | T-012 |
-| `src/forge/ui/workers.py` | **CREATE (T-013)** | `GenerationWorker` + `QtProgressReporter`; bridges `ProgressReporter` protocol → PySide6 signals; runs `Orchestrator.generate()` on `QThread` | T-013 |
-| `src/forge/ui/screens/base.py` | **CREATE (T-014)** | `WizardScreen` base class — `proceed_changed` Signal, `can_proceed`, `can_go_back`, `on_enter`/`on_exit` lifecycle hooks, `validate()`, `get_spec_update()` | T-014 |
-| `src/forge/ui/screens/welcome_screen.py` | **CREATE (T-014)** | `WelcomeScreen(WizardScreen)` — project name QLineEdit; `can_proceed=True` when name non-empty; registered at stack index 0 | T-014 |
-| `src/forge/ui/screens/domain_selection_screen.py` | **CREATE (T-014)** | `DomainSelectionScreen(WizardScreen)` — backend + frontend QListWidgets; queries orchestrator on `on_enter()`; registered at stack index 1 | T-014 |
-| `src/forge/ui/screens/configuration_screen.py` | **CREATE (T-014)** | `ConfigurationScreen(WizardScreen)` — dynamic form from `Question` objects; 5 widget type mappings; per-field validation labels; QGroupBox grouping; registered at stack index 2 | T-014 |
-| `src/forge/ui/main_window.py` | **CREATE (T-012)** → **MODIFY (T-014)** | Accept `screens` parameter, replace 5 stubs with injectable screen list, wire `proceed_changed` signals, add `_build_spec()` for ProjectSpec assembly, cross-screen data injection in `navigate_to()`, `can_proceed` guard in `next_screen()` | T-012 |
-| `src/forge/ui/screens/review_screen.py` | **CREATE (T-015)** | `ReviewScreen(WizardScreen)` — QTreeWidget summary tree view + `set_spec()` + duration estimate + slow-step warning; registered at stack index 3 | T-015 |
-| `src/forge/ui/screens/generation_screen.py` | **CREATE (T-015)** | `GenerationScreen(WizardScreen)` — QProgressBar + QPlainTextEdit log + stage label + duration label; passive display widget (no signal connections); registered at stack index 4 | T-015 |
-| `src/forge/ui/main_window.py` | ✅ **Created (T-012)** → **MODIFY (T-014)** → **MODIFY (T-015)** | Add `_get_output_dir()`, `_create_generation_worker()`, `_on_generation_finished/progress/log/error`, `cancel_generation()`, `_on_open_project()`, `_on_close()`; modify `next_screen()` with overwrite confirm flow + worker creation at index 3; modify `navigate_to()` with cross-screen injection for indices 3 (`set_spec()`) and 4 (`set_worker()`); modify `_update_navigation_buttons()` with generation-state branch at screen 4; add `_generation_finished`/`_generation_output_path` flags; wire Open/Close button handlers in `__init__` | T-012 |
-| `src/forge/ui/workers.py` | ✅ **Created (T-013)** → **MODIFY (T-015)** | Add `overwrite_confirmed: bool = False` to `GenerationWorker.__init__()` + forward to `orchestrator.generate(overwrite_confirmed=self._overwrite_confirmed)` | T-015 |
-| `tests/unit/test_wizard_screens.py` | ✅ **Created (T-014)** | Unit tests for WizardScreen base class + WelcomeScreen + DomainSelectionScreen + ConfigurationScreen + MainWindow integration; uses existing qapp/mock_orchestrator fixtures | T-014 |
+| `tests/unit/test_main_window.py` | ✅ **Already exists** → **MODIFY (T-014)** → **MODIFY (T-019)** | 233 lines, 12 ACs — AC-6 Path.exists mock must be updated for T-019 parent-dir check | T-016 (test-first) |
+| `src/forge/app.py` (_launch_gui) | ✅ **Modified (T-012)** | Replace `_launch_gui()` stub with real bootstrap | T-012 |
+| `src/forge/ui/workers.py` | ✅ **Created (T-013)** → **MODIFY (T-015)** | `GenerationWorker` + `QtProgressReporter`; bridges `ProgressReporter` protocol → PySide6 signals | T-013 |
+| `src/forge/ui/screens/base.py` | ✅ **Created (T-014)** | `WizardScreen` base class — `proceed_changed` Signal, lifecycle hooks, `validate()`, `get_spec_update()` | T-014 |
+| `src/forge/ui/screens/welcome_screen.py` | ✅ **Created (T-014)** → **MODIFY (T-019)** | Add `_parent_dir: Path \| None = None`, `_on_browse()`, Browse button + path label; update `get_spec_update()` to return `output_parent_dir` | T-014 → T-019 |
+| `src/forge/ui/screens/domain_selection_screen.py` | ✅ **Created (T-014)** | `DomainSelectionScreen(WizardScreen)` — backend + frontend QListWidgets | T-014 |
+| `src/forge/ui/screens/configuration_screen.py` | ✅ **Created (T-014)** | `ConfigurationScreen(WizardScreen)` — dynamic form from `Question` objects | T-014 |
+| `src/forge/ui/main_window.py` | ✅ **Created (T-012)** → **MODIFY (T-014)** → **MODIFY (T-015)** → **MODIFY (T-019)** | **T-019**: `_output_parent_dir` property (lazy `Path.cwd()` fallback); modify `_get_output_dir()`; modify `navigate_to()` index 3 (extract `output_parent_dir` → `review_screen.set_output_dir()`); modify `next_screen()` index 3 (add `output_dir.parent.exists()` guard before overwrite check) | T-012 → T-019 |
+| `src/forge/ui/screens/review_screen.py` | ✅ **Created (T-015)** → **MODIFY (T-019)** | Add `_output_dir: Path \| None = None` + `set_output_dir(output_dir)`. Modify `on_enter()` to use `self._output_dir` with `Path.cwd() / spec.project_name` fallback | T-015 → T-019 |
+| `src/forge/ui/screens/generation_screen.py` | ✅ **Created (T-015)** | `GenerationScreen(WizardScreen)` — passive display widget; no T-019 changes | T-015 |
+| `src/forge/ui/workers.py` | ✅ **Created (T-013)** → **MODIFY (T-015)** | No T-019 changes | T-015 |
+| `tests/unit/test_wizard_screens.py` | ✅ **Created (T-014)** | No T-019 changes needed | T-014 |
+| `tests/unit/test_wizard_screens_4_5.py` | ✅ **Created (T-015)** → **MODIFY (T-019)** | `test_no_overwrite_dialog_when_dir_does_not_exist` — Path.exists mock must return True for parent dir | T-015 → T-019 |
+| `tests/unit/test_output_directory_picker.py` | ✅ **Created (T-019 test-first)** | 435 lines, 15 tests across 3 classes. Tests Browse button, path resolution, ReviewScreen display, back-navigation, error handling | T-019 |
 
 ### Integration Test Layer (T-016 ✅, T-017 ✅, T-018 ✅)
 | File | Action | Purpose | Depends on |
@@ -772,6 +779,15 @@ DurationEstimate(estimated_seconds, has_slow_steps, slow_step_details)
 | **Canary test loads all 4 production plugins** — `test_entry_point_discovery_loads_production_plugins` calls `PluginRegistry.discover()` which triggers real `importlib.metadata.entry_points()` loading every bundled plugin. If any plugin has an import error (missing dep, syntax error), the test fails. | T-016 | **Medium** — intentional canary, but breaks during single-plugin development |
 | **Real registry composition also loads production plugins** — `test_validate_spec_using_real_registry` creates a real `PluginRegistry` + `discover()`, then validates spec with `backend_id="fastapi"`. Same production-plugin-loading as the canary. | T-016 | **Medium** — same pattern, same risk |
 | **`registry_with_discovery` fixture naming is misleading** — creates `user_plugin_dir` but calls `reg.discover()` without patching `cwd`/`entry_points()`, so it loads production plugins, not user plugins. User-plugin discovery is only exercised in tests that explicitly patch `cwd`. | T-016 | **Low** — behavior is correct despite misleading name |
+| **`_output_parent_dir` must be a `@property`, not a plain attribute** — `test_get_output_dir_backward_compat` sets `main_window._output_parent_dir = Path("/tmp")` *after* `__init__()`. A plain attribute assigned in `__init__` would be overwritten by constructor code. Must be a property with `__parent_dir` backing field that returns `Path.cwd()` when `_parent_dir is None`. | T-019 | **Critical** — property contract set by 15 test-first tests; 3 ACs depend on lazy-evaluation behavior |
+| **`WelcomeScreen._parent_dir` must be `None` at construction** — `test_get_spec_update_defaults_cwd` monkeypatches `Path.cwd()` after `__init__`, then calls `get_spec_update()`. If `_parent_dir` is set to `Path.cwd()` in `__init__`, the monkeypatch has no effect and the test fails. Must be `None` at construction, lazily evaluated in `get_spec_update()`. | T-019 | **High** — lazy evaluation ordering; 1 AC specifically tests this |
+| **`navigate_to(3)` must overwrite `_output_parent_dir` from WelcomeScreen** — when user picks a directory on screen 0, then navigates back and forth, the value must persist. `navigate_to` at index 3 must read `get_spec_update()["output_parent_dir"]` from WelcomeScreen (index 0) and set `self._output_parent_dir` before calling `review_screen.set_output_dir()`. | T-019 | **High** — cross-screen data flow; wrong order or missing extraction silently defaults to `Path.cwd()` |
+| **`ReviewScreen.on_enter()` must fall back to `Path.cwd() / spec.project_name` when `_output_dir is None`** — existing ReviewScreen tests create a `ReviewScreen` and call `on_enter(spec)` without ever calling `set_output_dir()`. Must preserve zero-output-dir behavior for all 22 existing ReviewScreen tests (844 lines). | T-019 | **High** — backward compatibility with 22 existing tests; regression would break T-015 |
+| **`next_screen(3)` must check `output_dir.parent.exists()` before the overwrite confirm dialog** — AC-6/AC-9 tests now trigger `Path.exists()` before the overwrite dialog. Two existing test files mock `Path.exists` unconditionally to return `False`. With T-019, the parent dir must be `mock_exists`-compatible: parent dir must exist, only the output dir itself must not. Nuanced mocking required. | T-019 | **High** — 2 existing test files break; need partial `Path.exists` mock (True for parent, False for output dir itself) |
+| **2 tests in `test_output_directory_picker.py` must use `welcome._parent_dir`, not `main_window._output_parent_dir`** — `test_get_output_dir_backward_compat` and `test_navigate_to_preserves_output_parent_dir` set `main_window._output_parent_dir = ...`. But `navigate_to(3)` now overwrites `_output_parent_dir` from WelcomeScreen. Must set `welcome._parent_dir` instead so the flow-through works. | T-019 | **High** — 2 of 15 test-first tests must differ from initial draft; wrong attribute name causes no-op assignment that doesn't propagate |
+| **Browse button must use `QFileDialog.getExistingDirectory()` with correct parent** — AC-1/AC-2 test expects `QFileDialog.getExistingDirectory` call with `self` as parent and `"Select Output Directory"` as title. Wrong parent widget breaks the modal dialog relationship. | T-019 | **Medium** — test checks exact call args; wrong signature fails silently (dialog shows but test assertion fails) |
+| **Path label updates via `setText()` must use absolute path, not relative** — `test_browse_updates_label` verifies label text exactly matches the returned `QFileDialog` path. The handler must call `label.setText(str(selected_path))` without normalization or transformation. | T-019 | **Low** — straightforward; one assertion per test |
+| **0 regressions across 14 existing UI test files** — T-019 changes 3 source files in `ui/` and touches `navigate_to()`/`next_screen()` method internals. Any change to these methods risks regression in AC-3 (button states), AC-6 (signal emission at index 3), AC-10 (cross-screen data flow). Full `test_main_window.py` and `test_wizard_screens_4_5.py` must still pass. | T-019 | **High** — T-015 already introduced high-risk mutations to these methods; T-019 adds more |
 | **Rollback + staging interaction — `shutil.rmtree` deletes `.forge-staging`** — `test_orchestrator_rollback_on_failure` verifies `not (output_dir / ".forge-staging").exists()`. Any stage writing files outside `txn.stage_file()` won't be cleaned up by rollback. | T-017 | **High** — first real rollback verification during pipeline execution |
 | **Mock executor silently swallows `generate()` calls** — `FastapiPlugin.generate()` (runs `uv add...`) is mocked to no-op. Tests verify `files()` content on disk, not scaffold commands. If dep installation moves to `generate()`, tests won't catch the gap. | T-017 | **Medium** — mock makes pipeline safe but hides `generate()` side effects |
 | **Real registry loads all 4 production plugins via `pipeline_registry` fixture** — any broken plugin import cascades to fail all T-017 tests. Intentional canary pattern (same as T-016). | T-017 | **Medium** — documented canary; use `pytest.mark.skipif` during single-plugin dev |
@@ -1014,6 +1030,87 @@ T-014 (WizardScreen base class + screens 1-3) ───────────�
 - Plugin layer (T-002, T-008–T-011) — no changes needed or affected
 - Generation layer (T-003, T-005, T-006) — Orchestrator already has `estimate_duration()`, `generate(overwrite_confirmed=...)`, `get_available_backends/frontends()` — all sufficient
 - Infrastructure layer (T-004, T08.1) — no changes needed
+
+---
+
+### Detailed Chain: T-019 Output Directory Picker
+
+T-019 is a **pure UI-layer story** — it adds a "Browse…" button to the Welcome screen (`QFileDialog.getExistingDirectory`), stores the chosen parent directory, and wires it through `MainWindow` to `ReviewScreen`. The ticket claim of zero domain/generation/infrastructure impact is correct: the `Orchestrator`, `GenerationTransaction`, and all stages already accept a fully parameterized `output_dir: Path`. No file outside `ui/` or `tests/` is modified.
+
+However, T-019 has **real ripple effects in existing test files** — the new `output_dir.parent.exists()` guard in `next_screen()` changes the execution path for tests that mock `Path.exists()` unconditionally.
+
+```
+T-014 (WizardScreen base + screens 1-3) ───────────────────┐
+  WelcomeScreen (created by T-014)                          │
+                                                             │
+T-012 (MainWindow shell) ───────────────────────────────────┤
+  _get_output_dir, navigate_to, next_screen,                 ├──► T-019 Output Directory Picker
+  _update_navigation_buttons                                  │      │
+                                                             │      ├── Modifies:
+T-015 (ReviewScreen) ───────────────────────────────────────┤      │   ui/screens/welcome_screen.py
+  ReviewScreen (created by T-015)                             │      │   ui/main_window.py
+  set_spec, on_enter, get_spec_update                        │      │   ui/screens/review_screen.py
+                                                             │      │
+T-013 (workers.py) ─────────────────────────────────────────┤      ├── Creates:
+  GenerationWorker (receives output_dir)                      │      │   (test file exists already)
+                                                             │      │
+T-007 (orchestrator) ───────────────────────────────────────┤      └── Breaks & requires updates:
+  _get_output_dir plumbing (unchanged)                        │          tests/unit/test_main_window.py (AC-6)
+                                                             │          tests/unit/test_wizard_screens_4_5.py (1 test)
+```
+
+**Files modified by T-019:**
+
+| File | Change | Risk |
+|------|--------|------|
+| `src/forge/ui/screens/welcome_screen.py` | Add `_parent_dir: Path \| None = None`, Browse button, path display label, `_on_browse()` slot, update `get_spec_update()` | **Medium** — `_parent_dir` must lazily fall back to `Path.cwd()` for test monkeypatch compatibility |
+| `src/forge/ui/main_window.py` | Add `_output_parent_dir` property (backed by `self.__parent_dir`), modify `_get_output_dir()`, modify `navigate_to()` index 3 block (extract `output_parent_dir` from WelcomeScreen, set `_output_parent_dir`, compute `output_dir`, call `review_screen.set_output_dir`), modify `next_screen()` index 3 block (add `output_dir.parent.exists()` guard) | **High** — property trick required for test compatibility; 2 change sites in `navigate_to` and `next_screen` affect 3 existing test files |
+| `src/forge/ui/screens/review_screen.py` | Add `_output_dir: Path \| None = None`, add `set_output_dir(output_dir)`, modify `on_enter()` to use `self._output_dir` with `Path.cwd()` fallback | **Medium** — backward compat must preserve existing tests that never call `set_output_dir()` |
+| `tests/unit/test_output_directory_picker.py` | **Already exists (test-first)** — 435 lines, 15 tests across 3 classes | **Medium** — 2 tests need to set `welcome._parent_dir` instead of `main_window._output_parent_dir` because `navigate_to(3)` now overwrites `_output_parent_dir` from WelcomeScreen |
+
+**Key chain insight:** T-019 is the **least architecturally invasive ticket** in the UI layer — it touches only UI files and uses only APIs already exposed by upstream tickets. Its complexity is not in layering or cross-ticket coupling, but in **test compatibility**: the `_output_parent_dir` property requires lazy `Path.cwd()` evaluation to pass `test_get_output_dir_backward_compat`, and the new `output_dir.parent.exists()` guard breaks 2 existing tests that use `Path.exists(lambda _: False)`.
+
+**The `_output_parent_dir` property trick:**
+
+The test-first contract in `test_output_directory_picker.py` requires:
+
+1. `_output_parent_dir` to evaluate `Path.cwd()` lazily (test accesses it after monkeypatching `Path.cwd()` post-construction)
+2. `_output_parent_dir` to accept direct assignment (tests set `main_window._output_parent_dir = Path(...)`)
+
+Both are satisfied by a Python property:
+
+```python
+@property
+def _output_parent_dir(self) -> Path:
+    return self.__parent_dir if self.__parent_dir is not None else Path.cwd()
+
+@_output_parent_dir.setter
+def _output_parent_dir(self, value: Path) -> None:
+    self.__parent_dir = value
+```
+
+Initialized in `__init__` as `self.__parent_dir: Path | None = None`. The getter calls `Path.cwd()` lazily, so test monkeypatches that occur after `MainWindow.__init__()` but before `_output_parent_dir` is accessed are reflected correctly.
+
+**Existing test breakage (2 tests, 2 files):**
+
+All breakages share the same root cause: `next_screen()` at index 3 now checks `output_dir.parent.exists()` before proceeding. Tests that mocked `Path.exists(lambda _: False)` for all paths now fail the parent check.
+
+| File | Test | Symptom | Fix |
+|------|------|---------|-----|
+| `tests/unit/test_main_window.py` | `test_generation_requested_emitted_on_next_from_screen_3` (AC-6) | `spy.count() == 0` — generation signal never emitted because parent dir appears nonexistent | Change `Path.exists` mock: `lambda self: self == Path("/tmp")` (parent exists, output doesn't) |
+| `tests/unit/test_wizard_screens_4_5.py` | `test_no_overwrite_dialog_when_dir_does_not_exist` | `assert stacked.currentIndex() == 4` fails (stays on screen 3 due to error dialog) | Same mock fix; test also needs `QMessageBox.critical` monkeypatch to suppress dialog |
+
+Additionally, 2 tests in `test_output_directory_picker.py` set `main_window._output_parent_dir` directly before calling `navigate_to(3)`, but T-019's `navigate_to(3)` overwrites `_output_parent_dir` from WelcomeScreen's `get_spec_update()`. These tests must instead set `welcome._parent_dir` on the WelcomeScreen widget:
+
+- `test_generation_worker_receives_custom_output_dir` — change `main_window._output_parent_dir = Path("/custom/path")` to `main_window._stacked.widget(0)._parent_dir = Path("/custom/path")`
+- `test_nonexistent_parent_shows_error_and_does_not_generate` — same pattern
+
+**No impact on:**
+- Domain layer (T-001) — no model changes
+- Plugin layer (T-002, T-008–T-011) — no changes
+- Generation layer (T-003–T-007) — `Orchestrator`, stages, registry, validation all unchanged
+- Infrastructure layer (T-004, T08.1) — no changes
+- Integration tests (T-016–T-018) — no `Path.exists`/`Path.cwd`-dependent assertions affected
 
 ---
 

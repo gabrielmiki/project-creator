@@ -10,13 +10,11 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from forge.domain import DurationEstimate
 from forge.ui.screens.base import WizardScreen
 
 if TYPE_CHECKING:
     from forge.domain.project_spec import ProjectSpec
     from forge.generation.orchestrator import Orchestrator
-    from forge.plugins.base import PluginBase
 
 
 class ReviewScreen(WizardScreen):
@@ -27,6 +25,7 @@ class ReviewScreen(WizardScreen):
         super().__init__()
         self._orchestrator = orchestrator
         self._spec: ProjectSpec | None = None
+        self._output_dir: Path | None = None
 
         layout = QVBoxLayout(self)
 
@@ -43,6 +42,9 @@ class ReviewScreen(WizardScreen):
 
     def set_spec(self, spec: ProjectSpec) -> None:
         self._spec = spec
+
+    def set_output_dir(self, output_dir: Path) -> None:
+        self._output_dir = output_dir
 
     def _resolve_display_name(self, plugin_id: str, is_backend: bool) -> str:
         plugins = (
@@ -91,7 +93,10 @@ class ReviewScreen(WizardScreen):
             for domain in spec.domains:
                 QTreeWidgetItem(domains_item, ["", domain.name])
 
-        output_dir = Path.cwd() / spec.project_name
+        if self._output_dir is not None:
+            output_dir = self._output_dir
+        else:
+            output_dir = Path.cwd() / spec.project_name
         QTreeWidgetItem(self._tree, ["Output Directory", str(output_dir)])
 
         estimate = self._orchestrator.estimate_duration(spec)
@@ -101,7 +106,7 @@ class ReviewScreen(WizardScreen):
         QTreeWidgetItem(self._tree, ["Estimated Duration", duration_text])
 
         if estimate.estimated_seconds > 10:
-            warning_text = f"Warning: Estimated duration exceeds 10s"
+            warning_text = "Warning: Estimated duration exceeds 10s"
             if estimate.slow_step_details:
                 warning_text += " — " + ", ".join(estimate.slow_step_details)
             self._warning_label.setText(warning_text)

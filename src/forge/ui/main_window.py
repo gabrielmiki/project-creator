@@ -42,6 +42,8 @@ class MainWindow(QMainWindow):
         self._worker: GenerationWorker | None = None
         self._thread: QThread | None = None
 
+        self.__parent_dir: Path | None = None
+
         self.setWindowTitle("Forge")
 
         central = QWidget()
@@ -52,11 +54,11 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._stacked)
 
         if screens is None:
-            from forge.ui.screens.welcome_screen import WelcomeScreen
-            from forge.ui.screens.domain_selection_screen import DomainSelectionScreen
             from forge.ui.screens.configuration_screen import ConfigurationScreen
-            from forge.ui.screens.review_screen import ReviewScreen
+            from forge.ui.screens.domain_selection_screen import DomainSelectionScreen
             from forge.ui.screens.generation_screen import GenerationScreen
+            from forge.ui.screens.review_screen import ReviewScreen
+            from forge.ui.screens.welcome_screen import WelcomeScreen
 
             screens = [
                 WelcomeScreen(),
@@ -101,6 +103,14 @@ class MainWindow(QMainWindow):
 
         self.navigate_to(0)
 
+    @property
+    def _output_parent_dir(self) -> Path:
+        return self.__parent_dir if self.__parent_dir is not None else Path.cwd()
+
+    @_output_parent_dir.setter
+    def _output_parent_dir(self, value: Path) -> None:
+        self.__parent_dir = value
+
     def _build_spec(self) -> ProjectSpec:
         updates: dict[str, Any] = {}
         for i in range(self._stacked.count()):
@@ -123,7 +133,7 @@ class MainWindow(QMainWindow):
         )
 
     def _get_output_dir(self, project_name: str) -> Path:
-        return Path.cwd() / project_name
+        return self._output_parent_dir / project_name
 
     def navigate_to(self, screen_index: int) -> None:
         current = self._stacked.currentWidget()
@@ -141,10 +151,19 @@ class MainWindow(QMainWindow):
             config_screen.frontend_id = domain_updates.get("frontend_id")
 
         if index == 3:
+            welcome = self._stacked.widget(0)
+            if hasattr(welcome, "get_spec_update"):
+                parent_dir = welcome.get_spec_update().get("output_parent_dir")
+                if parent_dir is not None:
+                    self._output_parent_dir = Path(parent_dir)
+
             spec = self._build_spec()
+            output_dir = self._get_output_dir(spec.project_name)
             review_screen = self._stacked.widget(3)
             if hasattr(review_screen, "set_spec"):
                 review_screen.set_spec(spec)
+            if hasattr(review_screen, "set_output_dir"):
+                review_screen.set_output_dir(output_dir)
 
         if index == 4:
             gen_screen = self._stacked.widget(4)
@@ -177,6 +196,12 @@ class MainWindow(QMainWindow):
             spec = self._build_spec()
             output_dir = self._get_output_dir(spec.project_name)
             try:
+                if not output_dir.parent.exists():
+                    self.show_error(
+                        "Invalid Directory",
+                        f"Parent directory does not exist: {output_dir.parent}",
+                    )
+                    return
                 dir_exists = output_dir.exists()
             except Exception as e:
                 self.show_error("Error", f"Cannot check output directory: {e}")
@@ -247,7 +272,9 @@ class MainWindow(QMainWindow):
             btn.setEnabled(enabled)
 
     def _create_generation_worker(
-        self, spec: ProjectSpec, output_dir: Path,
+        self,
+        spec: ProjectSpec,
+        output_dir: Path,
     ) -> None:
         txn = GenerationTransaction(output_dir)
         self._worker = GenerationWorker(
@@ -299,9 +326,7 @@ class MainWindow(QMainWindow):
 
     def _on_open_project(self) -> None:
         if self._generation_output_path is not None:
-            QDesktopServices.openUrl(
-                QUrl.fromLocalFile(str(self._generation_output_path))
-            )
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._generation_output_path)))
 
     def _on_close(self) -> None:
         self.close()
