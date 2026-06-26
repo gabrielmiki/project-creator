@@ -619,7 +619,7 @@ class TestOverwriteConfirmFlow:
         self, main_window: object, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setattr(Path, "cwd", lambda: Path("/tmp/test"))
-        monkeypatch.setattr(Path, "exists", lambda _: False)
+        monkeypatch.setattr(Path, "exists", lambda self: self == Path("/tmp/test"))
         monkeypatch.setattr("PySide6.QtCore.QThread.start", lambda self: None)
 
         main_window.navigate_to(3)

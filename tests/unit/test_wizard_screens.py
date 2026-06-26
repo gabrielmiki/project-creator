@@ -141,7 +141,9 @@ class TestWelcomeScreen:
         name_edit = welcome_screen.findChild(QLineEdit)
         assert name_edit is not None
         name_edit.setText("my-project")
-        assert welcome_screen.get_spec_update() == {"project_name": "my-project"}
+        update = welcome_screen.get_spec_update()
+        assert update["project_name"] == "my-project"
+        assert "output_parent_dir" in update
 
     def test_empty_name_disables_proceed(self, welcome_screen: object) -> None:
         name_edit = welcome_screen.findChild(QLineEdit)
