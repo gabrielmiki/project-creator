@@ -142,6 +142,48 @@ def orchestrator(pipeline_registry, validation, mock_executor):
     return Orchestrator(pipeline_registry, validation, executor=mock_executor)
 
 
+@pytest.fixture(scope="session")
+def qapp() -> object:
+    """Session-scoped QApplication for GUI integration tests."""
+    import sys
+
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    yield app
+
+
+@pytest.fixture
+def full_spec(spec_factory) -> ProjectSpec:
+    spec = spec_factory(backend_id="fastapi", frontend_id="react")
+    spec.config = {
+        "fastapi": {"orm": "sqlalchemy", "auth": False, "include_alembic": False},
+        "react": {},
+    }
+    return spec
+
+
+@pytest.fixture
+def django_htmx_spec(spec_factory) -> ProjectSpec:
+    spec = spec_factory(backend_id="django", frontend_id="htmx")
+    spec.config = {
+        "django": {"database": "sqlite", "include_drf": False},
+        "htmx": {},
+    }
+    return spec
+
+
+@pytest.fixture
+def worker(qapp, orchestrator, full_spec, temp_dir) -> object:  # noqa: ARG001
+    from forge.ui.workers import GenerationWorker
+
+    return GenerationWorker(
+        orchestrator=orchestrator,
+        spec=full_spec,
+        output_dir=temp_dir / "output",
+    )
+
+
 @pytest.fixture
 def fastapi_spec(spec_factory):
     spec = spec_factory(backend_id="fastapi")
